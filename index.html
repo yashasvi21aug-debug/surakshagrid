@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SurakshaGrid - Prototype</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Leaflet CSS & JS for real interactive map placeholders -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+</head>
+<body class="bg-slate-950 text-slate-100 font-sans antialiased">
+
+  <!-- TOP VIEW SWITCHER BAR -->
+  <header class="bg-slate-900 border-b border-slate-800 px-4 py-2 flex items-center justify-between">
+    <div class="flex items-center gap-2">
+      <div class="h-3 w-3 rounded-full bg-red-500 animate-pulse"></div>
+      <span class="font-bold text-sm tracking-wider text-slate-200">SURAKSHAGRID PROTOTYPE</span>
+    </div>
+    <div class="flex bg-slate-950 p-1 rounded-lg border border-slate-800">
+      <button id="btn-desktop" onclick="switchView('desktop')" class="px-3 py-1 text-xs font-semibold rounded bg-blue-600 text-white transition">Laptop / EOC View</button>
+      <button id="btn-mobile" onclick="switchView('mobile')" class="px-3 py-1 text-xs font-semibold rounded text-slate-400 hover:text-white transition">Citizen Mobile SOS</button>
+    </div>
+  </header>
+
+  <!-- 1. DESKTOP EOC COMMAND DASHBOARD -->
+  <section id="desktop-view" class="flex h-[calc(100vh-49px)]">
+    <!-- Sidebar Navigation -->
+    <aside class="w-64 border-r border-slate-800 bg-slate-900/50 p-4 flex flex-col justify-between">
+      <div class="space-y-4">
+        <div>
+          <h2 class="text-base font-bold text-red-500 tracking-wide">SurakshaGrid EOC</h2>
+          <p class="text-xs text-slate-500">Bharat Shakti Mission</p>
+        </div>
+        <nav class="space-y-1 text-xs">
+          <button class="w-full text-left px-3 py-2.5 rounded bg-blue-600/10 text-blue-400 font-medium border border-blue-500/20">Digital Twin & Map</button>
+          <button class="w-full text-left px-3 py-2.5 rounded text-slate-400 hover:bg-slate-800">Live Inundation Models</button>
+          <button class="w-full text-left px-3 py-2.5 rounded text-slate-400 hover:bg-slate-800">NDRF Rescue Dispatch</button>
+          <button class="w-full text-left px-3 py-2.5 rounded text-slate-400 hover:bg-slate-800">Citizen Evacuation Geofence</button>
+        </nav>
+      </div>
+      <div class="text-[11px] text-slate-500 border-t border-slate-800 pt-3">
+        System: <span class="text-emerald-400 font-semibold">Node.js Gateway Active</span>
+      </div>
+    </aside>
+
+    <!-- Main Command Workstation -->
+    <main class="flex-1 flex flex-col p-4 gap-4 overflow-hidden">
+      <!-- Top Metrics -->
+      <div class="grid grid-cols-4 gap-4 h-20">
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-3 flex flex-col justify-between">
+          <span class="text-[11px] font-semibold text-slate-400 uppercase">Active Inundation Zones</span>
+          <span class="text-xl font-bold text-amber-400">4 Critical</span>
+        </div>
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-3 flex flex-col justify-between">
+          <span class="text-[11px] font-semibold text-slate-400 uppercase">NDRF Rescue Units Dispatched</span>
+          <span class="text-xl font-bold text-blue-400">12 Teams</span>
+        </div>
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-3 flex flex-col justify-between">
+          <span class="text-[11px] font-semibold text-slate-400 uppercase">Incoming Citizen SOS</span>
+          <span class="text-xl font-bold text-red-500" id="desktop-sos-count">0 Received</span>
+        </div>
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-3 flex flex-col justify-between">
+          <span class="text-[11px] font-semibold text-slate-400 uppercase">Sentinel SAR Ingestion</span>
+          <span class="text-xl font-bold text-emerald-400">Live 6-12h Forecast</span>
+        </div>
+      </div>
+
+      <!-- Center Work Area: Map + Telemetry -->
+      <div class="flex-1 grid grid-cols-3 gap-4 min-h-0">
+        <!-- Interactive Map Container -->
+        <div class="col-span-2 bg-slate-900 border border-slate-800 rounded-xl overflow-hidden relative">
+          <div id="desktop-map" class="h-full w-full"></div>
+        </div>
+
+        <!-- Ingestion Log / JSON Stream -->
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col">
+          <div class="flex items-center justify-between mb-2">
+            <h3 class="text-xs font-bold text-slate-300 uppercase tracking-wide">Live Citizen SOS Feed</h3>
+            <span class="text-[10px] bg-red-950 text-red-400 border border-red-800 px-2 py-0.5 rounded-full animate-pulse">Live</span>
+          </div>
+          <div id="sos-logs" class="flex-1 bg-slate-950 rounded-lg border border-slate-800 p-3 text-[11px] font-mono text-slate-400 overflow-y-auto space-y-2">
+            <p class="text-slate-600">// Waiting for SOS triggers from Citizen Web View...</p>
+          </div>
+        </div>
+      </div>
+    </main>
+  </section>
+
+  <!-- 2. CITIZEN MOBILE SOS VIEW -->
+  <section id="mobile-view" class="hidden min-h-[calc(100vh-49px)] flex items-center justify-center p-4 bg-slate-950">
+    <div class="w-full max-w-sm bg-slate-900 rounded-2xl p-5 border border-slate-800 shadow-2xl space-y-4">
+      <div class="text-center space-y-1">
+        <span class="bg-red-500/10 text-red-500 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase border border-red-500/20">Emergency Dispatch</span>
+        <h1 class="text-xl font-black text-white">SurakshaGrid Citizen SOS</h1>
+        <p class="text-xs text-slate-400">Direct link to NDRF & State Disaster Management EOC</p>
+      </div>
+
+      <form id="sos-form" onsubmit="submitSos(event)" class="space-y-3">
+        <div>
+          <label class="text-[11px] font-semibold text-slate-400 uppercase block mb-1">Mobile Number</label>
+          <input id="citizen-phone" type="tel" required placeholder="+91 9876543210" class="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-red-500" />
+        </div>
+
+        <div>
+          <label class="text-[11px] font-semibold text-slate-400 uppercase block mb-1">Emergency Level</label>
+          <select id="emergency-level" class="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-red-500">
+            <option value="CRITICAL_TRAPPED">Critical: Trapped in Rising Water</option>
+            <option value="MEDICAL_EVAC">Medical Evacuation Needed</option>
+            <option value="FOOD_WATER">Ration / Safe Shelter Alert</option>
+          </select>
+        </div>
+
+        <button type="button" onclick="fetchLocation()" class="w-full bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold py-2.5 rounded-lg border border-slate-700 transition">
+          📍 Fetch GPS Coordinates
+        </button>
+
+        <p id="loc-status" class="text-[11px] text-cyan-400 text-center font-mono"></p>
+
+        <button type="submit" class="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-3 rounded-lg text-xs tracking-wider uppercase transition shadow-lg shadow-red-900/40">
+          Transmit Emergency SOS
+        </button>
+      </form>
+
+      <!-- Formatted JSON Output Display -->
+      <div id="json-box-wrapper" class="hidden">
+        <span class="text-[10px] font-semibold text-slate-400 uppercase">Exported Telemetry JSON:</span>
+        <pre id="json-output" class="bg-slate-950 p-2.5 rounded-lg text-[10px] text-emerald-400 border border-slate-800 overflow-x-auto mt-1"></pre>
+      </div>
+    </div>
+  </section>
+
+  <!-- SCRIPT LOGIC WITH DIGITAL TWIN SIMULATION -->
+  <script>
+    let desktopMap;
+    let citizenCoords = null;
+    let sosCount = 0;
+
+    // View Switcher
+    function switchView(view) {
+      const dView = document.getElementById('desktop-view');
+      const mView = document.getElementById('mobile-view');
+      const dBtn = document.getElementById('btn-desktop');
+      const mBtn = document.getElementById('btn-mobile');
+
+      if (view === 'desktop') {
+        dView.classList.remove('hidden');
+        mView.classList.add('hidden');
+        dBtn.className = 'px-3 py-1 text-xs font-semibold rounded bg-blue-600 text-white transition';
+        mBtn.className = 'px-3 py-1 text-xs font-semibold rounded text-slate-400 hover:text-white transition';
+        if (desktopMap) setTimeout(() => desktopMap.invalidateSize(), 200);
+      } else {
+        dView.classList.add('hidden');
+        mView.classList.remove('hidden');
+        mBtn.className = 'px-3 py-1 text-xs font-semibold rounded bg-blue-600 text-white transition';
+        dBtn.className = 'px-3 py-1 text-xs font-semibold rounded text-slate-400 hover:text-white transition';
+      }
+    }
+
+    // Initialize Map with Digital Twin Layers
+    function initMap() {
+      desktopMap = L.map('desktop-map').setView([26.85, 80.95], 11);
+
+      // Base Carto Dark Tile Layer
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+        attribution: '&copy; OpenStreetMap &copy; CARTO'
+      }).addTo(desktopMap);
+
+      // 1. DIGITAL TWIN: Simulated Flood Inundation Zone (6-12h Predictive Forecast)
+      const floodInundationZone = [
+        [26.88, 80.90],
+        [26.90, 80.96],
+        [26.86, 81.01],
+        [26.82, 80.97],
+        [26.83, 80.91]
+      ];
+      L.polygon(floodInundationZone, {
+        color: '#38bdf8',
+        fillColor: '#0284c7',
+        fillOpacity: 0.45,
+        weight: 2,
+        dashArray: '5, 5'
+      }).addTo(desktopMap).bindPopup("<b>AI Flood Twin: High Inundation Zone</b><br/>Predicted Water Rise: +2.4m");
+
+      // 2. DIGITAL TWIN: IoT River Gauge Telemetry Nodes
+      const sensors = [
+        { lat: 26.87, lng: 80.93, name: "Gomti River Gauge #1", level: "Critical (9.4m)" },
+        { lat: 26.83, lng: 80.99, name: "Gomti River Gauge #2", level: "Normal (5.1m)" }
+      ];
+      sensors.forEach(s => {
+        L.circleMarker([s.lat, s.lng], {
+          radius: 6,
+          fillColor: '#eab308',
+          color: '#ffffff',
+          weight: 1.5,
+          fillOpacity: 1
+        }).addTo(desktopMap).bindPopup(`<b>IoT Sensor: ${s.name}</b><br/>Level: ${s.level}`);
+      });
+
+      // 3. DIGITAL TWIN: Safe Evacuation Corridor
+      const safeCorridor = [
+        [26.81, 80.89],
+        [26.84, 80.93],
+        [26.86, 81.02]
+      ];
+      L.polyline(safeCorridor, {
+        color: '#10b981',
+        weight: 3,
+        dashArray: '4, 8'
+      }).addTo(desktopMap).bindPopup("<b>Safe NDRF Evacuation Corridor</b> (Elevation Cleared)");
+    }
+    window.onload = initMap;
+
+    // Geolocation Fetcher
+    function fetchLocation() {
+      const status = document.getElementById('loc-status');
+      if (navigator.geolocation) {
+        status.innerText = "Locating via device GPS...";
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            citizenCoords = {
+              lat: pos.coords.latitude,
+              lng: pos.coords.longitude,
+              accuracy: pos.coords.accuracy
+            };
+            status.innerText = `Lat: ${pos.coords.latitude.toFixed(4)}, Lng: ${pos.coords.longitude.toFixed(4)}`;
+          },
+          (err) => {
+            // Fallback simulated GPS coordinates if access denied or in test mode
+            citizenCoords = { lat: 26.8500, lng: 80.9500, accuracy: 12 };
+            status.innerText = "Simulated GPS: 26.8500, 80.9500";
+          }
+        );
+      }
+    }
+
+    // Submit SOS & Append to Dashboard
+    function submitSos(e) {
+      e.preventDefault();
+      if (!citizenCoords) fetchLocation();
+
+      const phone = document.getElementById('citizen-phone').value;
+      const type = document.getElementById('emergency-level').value;
+      const payload = {
+        id: "SOS-" + Math.floor(1000 + Math.random() * 9000),
+        phone: phone,
+        emergencyType: type,
+        coords: citizenCoords || { lat: 26.8500, lng: 80.9500 },
+        timestamp: new Date().toISOString()
+      };
+
+      // Show JSON on mobile view
+      document.getElementById('json-box-wrapper').classList.remove('hidden');
+      document.getElementById('json-output').innerText = JSON.stringify(payload, null, 2);
+
+      // Append to Dashboard Stream
+      sosCount++;
+      document.getElementById('desktop-sos-count').innerText = `${sosCount} Received`;
+      const logs = document.getElementById('sos-logs');
+      const entry = document.createElement('div');
+      entry.className = "bg-slate-900 p-2 rounded border border-red-500/30 text-slate-200";
+      entry.innerHTML = `
+        <div class="flex justify-between text-red-400 font-bold">
+          <span>${payload.id}</span>
+          <span class="text-[10px] text-slate-500">${new Date().toLocaleTimeString()}</span>
+        </div>
+        <div>Phone: ${payload.phone}</div>
+        <div class="text-[10px] text-slate-400">Type: ${payload.emergencyType}</div>
+        <div class="text-[10px] text-blue-400 font-mono">GPS: ${payload.coords.lat}, ${payload.coords.lng}</div>
+      `;
+      logs.prepend(entry);
+
+      // Plot Marker on Map
+      if (desktopMap) {
+        L.circleMarker([payload.coords.lat, payload.coords.lng], {
+          radius: 8,
+          fillColor: "#ef4444",
+          color: "#ffffff",
+          weight: 2,
+          fillOpacity: 0.9
+        }).addTo(desktopMap).bindPopup(`<b>🚨 ${payload.id}</b><br/>Phone: ${payload.phone}`).openPopup();
+      }
+
+      alert("Emergency SOS Transmitted & Recorded into Central EOC!");
+    }
+  </script>
+</body>
+</html>
