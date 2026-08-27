@@ -8,6 +8,8 @@ from pathlib import Path
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent
+CLASSIFIER_MODEL = PROJECT_ROOT / "ml" / "models" / "inundation_classifier.json"
+REGRESSOR_MODEL = PROJECT_ROOT / "ml" / "models" / "water_rise_regressor.json"
 FALLBACK_INSTRUCTIONS = """
 Fallback instructions:
   1. Copy .env.example to .env and verify DATABASE_URL.
@@ -21,6 +23,20 @@ def print_database_failure(error: Exception) -> None:
     print("\nSurakshaGrid could not reach PostgreSQL/PostGIS.")
     print(f"Database error: {error}")
     print(FALLBACK_INSTRUCTIONS)
+
+
+def compile_model_artifacts() -> None:
+    if CLASSIFIER_MODEL.is_file() and REGRESSOR_MODEL.is_file():
+        print("Model artifacts found; skipping compilation.")
+        return
+
+    print("Model artifacts missing; compiling XGBoost weights...")
+    subprocess.run(
+        [sys.executable, "-m", "ml.train_and_save"],
+        cwd=PROJECT_ROOT,
+        check=True,
+        env=os.environ.copy(),
+    )
 
 
 async def verify_database() -> None:
@@ -83,6 +99,18 @@ def main() -> int:
     os.chdir(PROJECT_ROOT)
     print("SurakshaGrid local launcher")
     print(f"Using configuration from: {PROJECT_ROOT / '.env'}")
+
+    try:
+        compile_model_artifacts()
+    except KeyboardInterrupt:
+        print("\nLauncher cancelled.")
+        return 130
+    except Exception as error:
+        print("\nSurakshaGrid could not compile the ML model artifacts.")
+        print(f"Model compilation error: {error}")
+        print("Install the ML dependencies with: python -m pip install -r requirements.txt")
+        print("Then retry: python run_local.py")
+        return 1
 
     try:
         asyncio.run(verify_database())
