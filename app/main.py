@@ -12,25 +12,35 @@ from app.routes.spatial import router as spatial_router
 from app.routes.ws import router as ws_router
 from app.services.weather import fetch_live_weather
 
-
 logger = logging.getLogger(__name__)
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
+# 1. Instantiate FastAPI First
 app = FastAPI(
     title="SurakshaGrid",
     description="Flood disaster incident command and digital twin API",
     version="1.0.0",
 )
-@app.get("/api/v1/telemetry/live-weather")
-async def get_live_telemetry(lat: float = 28.6321, lng: float = 77.4446):
-    """Returns actual real-time satellite & precipitation metrics."""
-    return await fetch_live_weather(lat, lng)
+
+# 2. Register Routers AFTER app is created
 app.include_router(ml_router)
 app.include_router(routes_router)
 app.include_router(sos_router)
 app.include_router(spatial_router)
 app.include_router(ws_router)
 
+# 3. Endpoints
+@app.get("/api/v1/telemetry/live-weather")
+async def get_live_telemetry(lat: float = 28.6321, lng: float = 77.4446):
+    return await fetch_live_weather(lat, lng)
+app.include_router(ml_router)
+app.include_router(routes_router)
+app.include_router(sos_router)
+app.include_router(spatial_router)
+app.include_router(ws_router)
+@app.get("/driver", include_in_schema=False)
+async def driver_app():
+    return FileResponse(PROJECT_ROOT / "driver.html")
 
 @app.on_event("startup")
 async def startup_event() -> None:
