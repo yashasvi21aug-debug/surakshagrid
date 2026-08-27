@@ -19,12 +19,21 @@ FEATURE_COLUMNS = [
 class FloodRiskPredictor:
     def __init__(self, model_path: str | Path = MODEL_PATH) -> None:
         self.model_path = Path(model_path)
+        self.model_bundle = None
+        self.classifier = None
+        self.regressor = None
+        self.feature_columns = FEATURE_COLUMNS
+
+    def _load_model(self) -> None:
+        if self.model_bundle is not None:
+            return
         self.model_bundle = joblib.load(self.model_path)
         self.classifier = self.model_bundle["classifier"]
         self.regressor = self.model_bundle["regressor"]
         self.feature_columns = self.model_bundle.get("feature_columns", FEATURE_COLUMNS)
 
     def predict_risk(self, lat: float, lng: float, rain_rate: float, discharge: float) -> dict:
+        self._load_model()
         # Synthetic geospatial calibration: low elevation and wet conditions increase inundation risk.
         elevation_proxy = max(2.0, 80.0 - abs(lat) * 2.4)
         soil_moisture = min(98.0, max(35.0, 50.0 + rain_rate * 0.9))

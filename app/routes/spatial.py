@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -24,7 +25,13 @@ async def get_inundation_zones(db: AsyncSession = Depends(get_db)) -> GeoJSONFea
     features: list[GeoJSONFeature] = []
     for zone in zones:
         geom = await db.scalar(select(func.ST_AsGeoJSON(zone.polygon)))
-        geometry = geom if isinstance(geom, dict) else {"type": "Polygon", "coordinates": []}
+        if isinstance(geom, str):
+            try:
+                geometry = json.loads(geom)
+            except json.JSONDecodeError:
+                geometry = {"type": "Polygon", "coordinates": []}
+        else:
+            geometry = geom if isinstance(geom, dict) else {"type": "Polygon", "coordinates": []}
         features.append(
             GeoJSONFeature(
                 properties={
@@ -88,6 +95,14 @@ async def get_nearby_sos(
     items: list[dict[str, Any]] = []
     for incident in incidents:
         lon, lat_val = await db.scalar(select(func.ST_X(incident.location), func.ST_Y(incident.location)))
+        distance = await db.scalar(
+            select(
+                func.ST_Distance(
+                    incident.location,
+                    func.ST_SetSRID(func.ST_Point(lng, lat), 4326),
+                )
+            )
+        )
         items.append(
             {
                 "id": incident.id,
@@ -96,7 +111,7 @@ async def get_nearby_sos(
                 "status": incident.status.value,
                 "lat": float(lat_val) if lat_val is not None else None,
                 "lng": float(lon) if lon is not None else None,
-                "distance_m": round(float(func.ST_Distance(incident.location, func.ST_SetSRID(func.ST_Point(lng, lat), 4326))), 2),
+                "distance_m": round(float(distance), 2) if distance is not None else None,
             }
         )
     return {"items": items, "center": {"lat": lat, "lng": lng}, "radius_km": radius_km}
