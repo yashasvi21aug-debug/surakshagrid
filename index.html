@@ -64,6 +64,23 @@
       color: #64748B !important;
       padding: 6px !important;
     }
+
+    .map-pulse-marker {
+      width: 18px;
+      height: 18px;
+      display: block;
+      border-radius: 9999px;
+      background: rgba(239, 68, 68, 0.9);
+      border: 2px solid rgba(255, 255, 255, 0.9);
+      box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7);
+      animation: pulseMarker 1.8s infinite;
+    }
+
+    @keyframes pulseMarker {
+      0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+      70% { box-shadow: 0 0 0 14px rgba(239, 68, 68, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+    }
   </style>
 </head>
 <body class="bg-brand-surface text-slate-200 font-sans antialiased min-h-screen flex flex-col selection:bg-blue-600 selection:text-white">
@@ -465,13 +482,20 @@
 
   <!-- SCRIPT ENGINE -->
   <script>
+    const API_BASE = 'http://localhost:8000';
+    const WS_URL = 'ws://localhost:8000/ws/eoc-feed';
+
     let desktopMap;
+    let floodZoneLayerGroup;
+    let sensorLayerGroup;
+    let liveIncidentLayerGroup;
     let citizenCoords = null;
     let sosCount = 0;
     let liveWeatherData = null;
     let dynamicLayers = [];
     let selectedEmergencyType = 'CRITICAL_TRAPPED';
     let isOfficerAuthenticated = false;
+    let wsConnection = null;
 
     lucide.createIcons();
 
@@ -516,7 +540,213 @@
       } else {
         setTimeout(() => desktopMap.invalidateSize(), 200);
       }
+
+      loadDashboardData();
+      connectRealtimeFeed();
       lucide.createIcons();
+    }
+
+    async function loadDashboardData() {
+      if (!desktopMap) return;
+
+      try {
+        await fetchFloodZones();
+      } catch (error) {
+        console.warn('Flood zone fetch failed:', error);
+      }
+
+      try {
+        await fetchGaugeSensors();
+      } catch (error) {
+        console.warn('Gauge sensors fetch failed:', error);
+      }
+    }
+
+    async function fetchFloodZones() {
+      const response = await fetch(`${API_BASE}/api/v1/spatial/inundation-zones`);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch flood polygons: ${response.status}`);
+      }
+      const data = await response.json();
+
+      if (!Array.isArray(data.features)) {
+        return;
+      }
+
+      if (!floodZoneLayerGroup) {
+        floodZoneLayerGroup = L.layerGroup().addTo(desktopMap);
+      } else {
+        floodZoneLayerGroup.clearLayers();
+      }
+
+      data.features.forEach((feature) => {
+        const geometry = feature?.geometry;
+        if (!geometry || geometry.type !== 'Polygon') return;
+
+        const polygon = L.geoJSON(geometry, {
+          style: {
+            color: '#F97316',
+            weight: 1.5,
+            opacity: 0.9,
+            fillColor: '#F97316',
+            fillOpacity: 0.28,
+          },
+        });
+
+        const props = feature.properties || {};
+        polygon.bindPopup(`
+          <div class="text-xs space-y-1">
+            <div class="font-semibold text-slate-200">${props.zone_name || 'Flood Zone'}</div>
+            <div class="text-slate-400">Risk score: <span class="font-mono text-slate-200">${props.risk_score ?? '--'}</span></div>
+            <div class="text-slate-400">Water rise: <span class="font-mono text-slate-200">${props.estimated_water_rise ?? '--'} m</span></div>
+          </div>
+        `);
+
+        polygon.addTo(floodZoneLayerGroup);
+      });
+    }
+
+    async function fetchGaugeSensors() {
+      const response = await fetch(`${API_BASE}/api/v1/spatial/sensors`);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch sensor data: ${response.status}`);
+      }
+      const data = await response.json();
+      const items = Array.isArray(data.items) ? data.items : [];
+
+      if (!sensorLayerGroup) {
+        sensorLayerGroup = L.layerGroup().addTo(desktopMap);
+      } else {
+        sensorLayerGroup.clearLayers();
+      }
+
+      items.forEach((sensor) => {
+        if (sensor.lat == null || sensor.lng == null) return;
+
+        const status = (sensor.status || '').toUpperCase();
+        let color = '#10B981';
+        if (status.includes('ALERT') || status.includes('CRITICAL') || status.includes('HIGH')) {
+          color = '#F59E0B';
+        }
+        if (status.includes('CRITICAL') || status.includes('DANGER')) {
+          color = '#EF4444';
+        }
+
+        const marker = L.circleMarker([sensor.lat, sensor.lng], {
+          radius: 8,
+          color: '#FFFFFF',
+          weight: 1.5,
+          fillColor: color,
+          fillOpacity: 1,
+        }).bindPopup(`
+          <div class="text-xs space-y-1">
+            <div class="font-semibold text-slate-200">${sensor.sensor_name || 'Gauge Sensor'}</div>
+            <div class="text-slate-400">Status: <span class="font-mono ${status.includes('ALERT') || status.includes('CRITICAL') ? 'text-amber-400' : 'text-emerald-400'}">${status || 'UNKNOWN'}</span></div>
+            <div class="text-slate-400">Water level: <span class="font-mono text-slate-200">${sensor.current_water_level_m ?? '--'} m</span></div>
+          </div>
+        `);
+
+        marker.addTo(sensorLayerGroup);
+      });
+    }
+
+    function connectRealtimeFeed() {
+      if (!('WebSocket' in window)) {
+        console.warn('WebSocket is not supported in this browser');
+        return;
+      }
+
+      if (wsConnection && (wsConnection.readyState === WebSocket.OPEN || wsConnection.readyState === WebSocket.CONNECTING)) {
+        return;
+      }
+
+      wsConnection = new WebSocket(WS_URL);
+
+      wsConnection.onopen = () => {
+        console.log('Connected to SurakshaGrid EOC feed', WS_URL);
+      };
+
+      wsConnection.onmessage = (event) => {
+        try {
+          const payload = JSON.parse(event.data);
+          handleLiveEvent(payload);
+        } catch (error) {
+          console.warn('Invalid real-time event payload:', event.data);
+        }
+      };
+
+      wsConnection.onerror = () => {
+        console.warn('WebSocket connection unavailable; continuing with local fallback feed.');
+      };
+
+      wsConnection.onclose = () => {
+        console.log('WebSocket connection closed; retrying in 5s');
+        setTimeout(connectRealtimeFeed, 5000);
+      };
+    }
+
+    function handleLiveEvent(payload) {
+      const eventName = payload?.event || 'generic_event';
+      const data = payload?.data || payload || {};
+
+      if (eventName === 'new_sos' || eventName === 'sos_status_update' || data?.phone_number || data?.emergency_type) {
+        appendIncidentCard(data, eventName);
+        if (data?.lat && data?.lng) {
+          addPulsingIncidentMarker(data.lat, data.lng, data.phone_number || data.phone || 'SOS');
+        }
+      }
+
+      if (eventName === 'gauge_alert' && data?.lat && data?.lng) {
+        addPulsingIncidentMarker(data.lat, data.lng, data.sensor_name || 'Gauge Alert', '#F59E0B');
+      }
+    }
+
+    function addPulsingIncidentMarker(lat, lng, label, color = '#EF4444') {
+      if (!desktopMap) return;
+
+      if (!liveIncidentLayerGroup) {
+        liveIncidentLayerGroup = L.layerGroup().addTo(desktopMap);
+      }
+
+      const marker = L.marker([lat, lng], {
+        icon: L.divIcon({
+          className: 'custom-pulse-marker',
+          html: `<span class="map-pulse-marker" style="background: ${color}; box-shadow: 0 0 0 0 ${color}80;"></span>`,
+          iconSize: [18, 18],
+          iconAnchor: [9, 9],
+        }),
+      }).bindPopup(`<div class="text-xs"><strong>${label}</strong><br>Live dispatched incident</div>`);
+
+      marker.addTo(liveIncidentLayerGroup);
+    }
+
+    function appendIncidentCard(data, eventName) {
+      const logs = document.getElementById('sos-logs');
+      const emptyState = document.getElementById('empty-feed-state');
+      if (emptyState) emptyState.remove();
+
+      const incidentId = data.id || data.incident_id || `LIVE-${Date.now().toString().slice(-6)}`;
+      const phone = data.phone_number || data.phone || 'Unknown contact';
+      const emergencyType = data.emergency_type || data.emergencyType || 'Flood incident';
+      const status = data.status || 'PENDING';
+      const lat = data.lat ?? '--';
+      const lng = data.lng ?? '--';
+
+      const card = document.createElement('div');
+      card.className = 'bg-slate-950/80 p-3 rounded-lg border border-brand-cardBorder border-l-2 border-l-rose-500 space-y-1.5 shadow-sm';
+      card.innerHTML = `
+        <div class="flex items-center justify-between">
+          <span class="font-mono font-semibold text-xs text-rose-400">${incidentId}</span>
+          <span class="text-[10px] font-mono ${status === 'RESOLVED' ? 'text-emerald-400' : 'text-slate-500'}">${status}</span>
+        </div>
+        <div class="text-xs text-slate-300 font-medium">${phone}</div>
+        <div class="text-[11px] text-slate-400 truncate">${emergencyType}</div>
+        <div class="text-[10px] font-mono text-blue-400/90">${lat !== '--' ? Number(lat).toFixed(4) : lat}, ${lng !== '--' ? Number(lng).toFixed(4) : lng}</div>
+      `;
+      logs.prepend(card);
+
+      sosCount = Math.max(sosCount, Number(logs.children.length) || 0);
+      document.getElementById('desktop-sos-count').innerText = String(sosCount);
     }
 
     function logoutOfficer() {
@@ -690,7 +920,7 @@
       }
     }
 
-    function submitSos(e) {
+    async function submitSos(e) {
       e.preventDefault();
       if (!citizenCoords) fetchLocation();
 
@@ -704,34 +934,55 @@
         timestamp: new Date().toISOString()
       };
 
+      const backendPayload = {
+        phone,
+        emergencyType: selectedEmergencyType,
+        lat: (citizenCoords || payload.coords).lat,
+        lng: (citizenCoords || payload.coords).lng,
+        rainRate: liveWeatherData?.precipitation ?? 0,
+      };
+
       document.getElementById('json-box-wrapper').classList.remove('hidden');
       document.getElementById('json-output').innerText = JSON.stringify(payload, null, 2);
 
-      sosCount++;
-      document.getElementById('desktop-sos-count').innerText = sosCount;
+      try {
+        const response = await fetch(`${API_BASE}/api/v1/sos`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(backendPayload),
+        });
 
-      const emptyState = document.getElementById('empty-feed-state');
-      if (emptyState) emptyState.remove();
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
 
-      const logs = document.getElementById('sos-logs');
-      const entry = document.createElement('div');
-      entry.className = "bg-slate-950/80 p-3 rounded-lg border border-brand-cardBorder border-l-2 border-l-rose-500 space-y-1.5 shadow-sm";
-      entry.innerHTML = `
-        <div class="flex items-center justify-between">
-          <span class="font-mono font-semibold text-xs text-rose-400">${payload.id}</span>
-          <span class="text-[10px] font-mono text-slate-500">${new Date().toLocaleTimeString()}</span>
-        </div>
-        <div class="text-xs text-slate-300 font-medium">${payload.phone}</div>
-        <div class="text-[11px] text-slate-400 truncate">${payload.emergencyType.replace('_', ' ')}</div>
-        <div class="text-[10px] font-mono text-blue-400/90">${payload.coords.lat.toFixed(4)}, ${payload.coords.lng.toFixed(4)}</div>
-      `;
-      logs.prepend(entry);
+        const serverResponse = await response.json();
+        payload.id = serverResponse.id || payload.id;
+        document.getElementById('json-output').innerText = JSON.stringify({
+          ...payload,
+          backend: serverResponse,
+        }, null, 2);
+      } catch (error) {
+        console.warn('FastAPI SOS endpoint is offline; using local fallback dispatch flow.', error);
+      }
+
+      const localPayload = {
+        id: payload.id,
+        phone_number: payload.phone,
+        emergency_type: payload.emergencyType,
+        status: 'PENDING',
+        lat: payload.coords.lat,
+        lng: payload.coords.lng,
+      };
+
+      appendIncidentCard(localPayload, 'new_sos');
+      addPulsingIncidentMarker(payload.coords.lat, payload.coords.lng, payload.phone);
 
       if (desktopMap) {
         L.circleMarker([payload.coords.lat, payload.coords.lng], {
           radius: 7,
-          fillColor: "#F43F5E",
-          color: "#FFFFFF",
+          fillColor: '#F43F5E',
+          color: '#FFFFFF',
           weight: 1.5,
           fillOpacity: 1
         }).addTo(desktopMap).bindPopup(`
