@@ -81,6 +81,32 @@
 </head>
 <body class="h-screen flex flex-col">
 
+    <!-- Officer Authentication Gate -->
+    <div id="auth-modal" class="fixed inset-0 z-[2000] flex items-center justify-center bg-slate-950/95 p-4">
+        <div class="w-full max-w-sm rounded border border-blue-500/40 bg-darkcard p-6 shadow-2xl">
+            <div class="mb-6 flex items-center gap-3">
+                <div class="flex h-10 w-10 items-center justify-center rounded border border-blue-500/50 bg-blue-600/15 text-blue-400">
+                    <i class="fa-solid fa-lock"></i>
+                </div>
+                <div>
+                    <p class="text-[10px] font-bold uppercase tracking-[.2em] text-blue-400">Secure command channel</p>
+                    <h2 class="text-lg font-bold text-white">Officer authentication</h2>
+                </div>
+            </div>
+            <form id="auth-form" class="space-y-4">
+                <label class="block text-[11px] font-semibold uppercase tracking-wider text-slate-400">Badge ID
+                    <input id="auth-badge" name="badge_id" required autocomplete="username" class="mt-1.5 w-full rounded border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-white outline-none focus:border-blue-500" placeholder="Officer badge number">
+                </label>
+                <label class="block text-[11px] font-semibold uppercase tracking-wider text-slate-400">Password
+                    <input id="auth-password" name="password" required type="password" autocomplete="current-password" class="mt-1.5 w-full rounded border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-white outline-none focus:border-blue-500" placeholder="Secure password">
+                </label>
+                <p id="auth-error" class="hidden text-xs text-red-400" role="alert"></p>
+                <button class="w-full rounded bg-blue-600 px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-white hover:bg-blue-500" type="submit">Authenticate Officer</button>
+            </form>
+            <button id="demo-bypass" class="mt-3 w-full rounded border border-amber-500/50 bg-amber-500/10 px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-amber-300 hover:bg-amber-500/20" type="button">Simulation Demo Bypass - Officer #3492</button>
+        </div>
+    </div>
+
     <!-- Top Command Telemetry Header -->
     <header class="h-14 bg-darkcard border-b border-cardborder px-6 flex items-center justify-between shrink-0">
         <div class="flex items-center space-x-3">
@@ -258,6 +284,69 @@
 
     <!-- Engine Architecture Script -->
     <script>
+        // Attach the session JWT only to administrative requests.
+        (() => {
+            const originalFetch = window.fetch.bind(window);
+            const authModal = document.getElementById('auth-modal');
+            const authForm = document.getElementById('auth-form');
+            const authError = document.getElementById('auth-error');
+            const tokenKey = 'surakshagrid.access_token';
+            const adminPaths = ['/api/v1/alerts/geofence', '/api/v1/routes/dispatch'];
+
+            const showAuth = (message = '') => {
+                authModal.classList.remove('hidden');
+                authError.textContent = message;
+                authError.classList.toggle('hidden', !message);
+            };
+            const saveAuth = (data) => {
+                sessionStorage.setItem(tokenKey, data.access_token);
+                authModal.classList.add('hidden');
+                authError.classList.add('hidden');
+            };
+            const authenticate = async (url, options = {}) => {
+                const response = await originalFetch(url, options);
+                if (!response.ok) throw new Error((await response.json()).detail || 'Authentication failed');
+                return response.json();
+            };
+
+            authForm.addEventListener('submit', async (event) => {
+                event.preventDefault();
+                authError.classList.add('hidden');
+                const formData = new FormData(authForm);
+                try {
+                    const data = await authenticate('/api/v1/auth/login', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ badge_id: formData.get('badge_id').trim(), password: formData.get('password') })
+                    });
+                    saveAuth(data);
+                } catch (error) {
+                    showAuth(error.message || 'Authentication failed');
+                }
+            });
+            document.getElementById('demo-bypass').addEventListener('click', async () => {
+                try { saveAuth(await authenticate('/api/v1/auth/demo-bypass', { method: 'POST' })); }
+                catch (error) { showAuth(error.message || 'Demo bypass unavailable'); }
+            });
+
+            window.fetch = async (input, options = {}) => {
+                const url = typeof input === 'string' ? input : input.url;
+                const isAdministrative = adminPaths.some((path) => url.includes(path));
+                if (!isAdministrative) return originalFetch(input, options);
+                const token = sessionStorage.getItem(tokenKey);
+                if (!token) { showAuth('Authenticate before using administrative controls.'); throw new Error('Officer authentication required'); }
+                const headers = new Headers(options.headers || (input instanceof Request ? input.headers : undefined));
+                headers.set('Authorization', `Bearer ${token}`);
+                const response = await originalFetch(input, { ...options, headers });
+                if (response.status === 401) {
+                    sessionStorage.removeItem(tokenKey);
+                    showAuth('Session expired. Authenticate again.');
+                }
+                return response;
+            };
+            if (sessionStorage.getItem(tokenKey)) authModal.classList.add('hidden');
+        })();
+
         let currentPos = [28.6321, 77.4446];
         
         // GIS Canvas Initialization
@@ -315,6 +404,7 @@
         let inundationLayer = L.layerGroup().addTo(map);
         let shelterLayer = L.layerGroup().addTo(map);
         let routeLayer = L.layerGroup().addTo(map);
+        let activeFloodZoneCoordinates = [];
         const activeMarkers = {};
         let activeVehicleMarker = null;
         let vehicleAnimationTimer = null;
@@ -380,7 +470,7 @@
         }
         fetchSafeShelters();
 
-        // Authentic Road Tracking Engine (OSRM + Real Road Geometry + Dynamic Angle)
+        // Route rescue units through the backend's flood-aware OSRM corridor.
         async function routeRescueUnitToVictim(victimLat, victimLng) {
             map.closePopup(); // Immediately close popup
             routeLayer.clearLayers();
@@ -389,19 +479,28 @@
             const originLat = 28.6450;
             const originLng = 77.4300;
 
-            showToast("Routing Engine", "Calculating road corridor via OSRM...", "info");
+            showToast("Routing Engine", "Calculating green corridor around active flood zones...", "info");
 
             try {
-                const url = `https://router.project-osrm.org/route/v1/driving/${originLng},${originLat};${victimLng},${victimLat}?overview=full&geometries=geojson`;
-                const res = await fetch(url);
+                const res = await fetch('/api/v1/routes/evacuate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        origin: { lat: originLat, lng: originLng },
+                        destination: { lat: victimLat, lng: victimLng },
+                        active_flood_zones: activeFloodZoneCoordinates.length > 0
+                            ? [{ coordinates: activeFloodZoneCoordinates, water_depth_m: 2.4 }]
+                            : []
+                    })
+                });
                 const data = await res.json();
+                if (!res.ok) throw new Error(data.detail || 'Evacuation route unavailable');
 
-                if (data.routes && data.routes.length > 0) {
-                    const route = data.routes[0];
-                    const coords = route.geometry.coordinates.map(pt => [pt[1], pt[0]]);
+                if (data.safe_bypass_geojson && data.safe_bypass_geojson.coordinates.length > 0) {
+                    const coords = data.safe_bypass_geojson.coordinates.map(pt => [pt[1], pt[0]]);
                     
-                    const distanceKm = (route.distance / 1000).toFixed(1);
-                    const durationMins = Math.ceil(route.duration / 60);
+                    const distanceKm = Number(data.distance_km).toFixed(1);
+                    const durationMins = Math.ceil(data.estimated_travel_time_mins);
 
                     // Update Tactical HUD
                     document.getElementById('eta-card').classList.remove('hidden');
@@ -410,14 +509,14 @@
                     document.getElementById('eta-status').innerText = 'IN TRANSIT';
                     document.getElementById('eta-status').className = 'text-[10px] bg-blue-500/20 text-blue-400 px-1.5 py-0.2 rounded font-mono';
 
-                    // 1. Draw crisp tactical road route
+                    // Green corridor is deliberately drawn above the red hazard layer.
                     const polyline = L.polyline(coords, {
-                        color: '#2563EB',
-                        weight: 5,
+                        color: '#22C55E',
+                        weight: 6,
                         opacity: 0.9,
                         lineCap: 'round',
                         lineJoin: 'round'
-                    }).addTo(routeLayer);
+                    }).addTo(routeLayer).bindTooltip('GREEN CORRIDOR — FLOOD AVOIDANCE', { sticky: true });
 
                     map.fitBounds(polyline.getBounds(), { padding: [50, 50] });
 
@@ -529,12 +628,14 @@
         function fetchLiveBasinInundation() {
             inundationLayer.clearLayers();
             const delta = 0.012;
-            const floodPolygon = L.polygon([
+            const floodPolygonCoordinates = [
                 [currentPos[0] - delta, currentPos[1] - delta],
                 [currentPos[0] + delta * 0.8, currentPos[1] - delta * 0.5],
                 [currentPos[0] + delta * 0.4, currentPos[1] + delta],
                 [currentPos[0] - delta * 0.9, currentPos[1] + delta * 0.7]
-            ], {
+            ];
+            activeFloodZoneCoordinates = floodPolygonCoordinates.map(([lat, lng]) => [lng, lat]);
+            const floodPolygon = L.polygon(floodPolygonCoordinates, {
                 color: '#DC2626',
                 fillColor: '#DC2626',
                 fillOpacity: 0.25,

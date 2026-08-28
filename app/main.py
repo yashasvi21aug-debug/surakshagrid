@@ -5,6 +5,8 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse
 
 from app.database import init_db
+from app.routes.alerts import router as alerts_router
+from app.routes.auth import router as auth_router
 from app.routes.ml import router as ml_router
 from app.routes.routes import router as routes_router
 from app.routes.sos import router as sos_router
@@ -24,6 +26,8 @@ app = FastAPI(
 
 # 2. Register Routers AFTER app is created
 app.include_router(ml_router)
+app.include_router(alerts_router)
+app.include_router(auth_router)
 app.include_router(routes_router)
 app.include_router(sos_router)
 app.include_router(spatial_router)
@@ -33,14 +37,17 @@ app.include_router(ws_router)
 @app.get("/api/v1/telemetry/live-weather")
 async def get_live_telemetry(lat: float = 28.6321, lng: float = 77.4446):
     return await fetch_live_weather(lat, lng)
-app.include_router(ml_router)
-app.include_router(routes_router)
-app.include_router(sos_router)
-app.include_router(spatial_router)
-app.include_router(ws_router)
+
+
 @app.get("/driver", include_in_schema=False)
 async def driver_app():
     return FileResponse(PROJECT_ROOT / "driver.html")
+
+
+@app.get("/citizen", include_in_schema=False)
+@app.get("/sos", include_in_schema=False)
+async def citizen_app() -> FileResponse:
+    return FileResponse(PROJECT_ROOT / "citizen.html")
 
 @app.on_event("startup")
 async def startup_event() -> None:

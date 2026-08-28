@@ -19,6 +19,16 @@ Fallback instructions:
 """.strip()
 
 
+def verify_environment() -> None:
+    from app.config import settings
+
+    if not settings.DATABASE_URL:
+        raise RuntimeError("DATABASE_URL is not configured")
+    if settings.DATABASE_URL.startswith("sqlite"):
+        raise RuntimeError("DATABASE_URL must point to PostgreSQL/PostGIS for local launch")
+    print(f"Database target configured: {settings.DATABASE_URL.split('@')[-1]}")
+
+
 def print_database_failure(error: Exception) -> None:
     print("\nSurakshaGrid could not reach PostgreSQL/PostGIS.")
     print(f"Database error: {error}")
@@ -52,6 +62,22 @@ async def initialize_database() -> None:
     from app.database import init_db
 
     await init_db()
+
+
+async def database_is_empty() -> bool:
+    from sqlalchemy import func, select
+
+    from app.database import AsyncSessionLocal
+    from app.models.gis_models import IoTWaterGauge
+    from app.models.spatial import FloodZone, Shelter
+
+    async with AsyncSessionLocal() as session:
+        counts = [
+            await session.scalar(select(func.count()).select_from(Shelter)),
+            await session.scalar(select(func.count()).select_from(FloodZone)),
+            await session.scalar(select(func.count()).select_from(IoTWaterGauge)),
+        ]
+    return all(count == 0 for count in counts)
 
 
 def run_seed_script() -> None:
@@ -101,6 +127,7 @@ def main() -> int:
     print(f"Using configuration from: {PROJECT_ROOT / '.env'}")
 
     try:
+        verify_environment()
         compile_model_artifacts()
     except KeyboardInterrupt:
         print("\nLauncher cancelled.")
@@ -117,8 +144,11 @@ def main() -> int:
         print("PostgreSQL/PostGIS connection verified.")
         asyncio.run(initialize_database())
         print("Database tables initialized.")
-        run_seed_script()
-        print("Demo data seeded.")
+        if asyncio.run(database_is_empty()):
+            run_seed_script()
+            print("Demo data seeded into empty tables.")
+        else:
+            print("Existing data found; skipping demo seeder.")
     except KeyboardInterrupt:
         print("\nLauncher cancelled.")
         return 130

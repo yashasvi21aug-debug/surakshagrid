@@ -9,6 +9,7 @@ from app.models.gis_models import (
     RescueUnit,
     RescueUnitStatus,
 )
+from app.models.spatial import FloodZone, SOSIncident, Shelter
 
 __all__ = [
     "Base",
@@ -20,4 +21,7 @@ __all__ = [
     "IoTWaterGauge",
     "RescueUnit",
     "RescueUnitStatus",
+    "SOSIncident",
+    "FloodZone",
+    "Shelter",
 ]
