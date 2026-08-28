@@ -192,6 +192,12 @@
                         <span>Weather API:</span>
                         <span class="text-slate-200">Open-Meteo Synced</span>
                     </div>
+                    const BACKEND_DOMAIN = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+    ? window.location.host
+    : 'surakshagrid-app.onrender.com';
+
+const API_BASE = (window.location.protocol === 'https:' ? 'https://' : 'http://') + BACKEND_DOMAIN;
+const WS_BASE  = (window.location.protocol === 'https:' ? 'wss://' : 'ws://') + BACKEND_DOMAIN;
                     <div class="flex justify-between items-center">
                         <span>Surface Wind:</span>
                         <span id="live-wind" class="text-slate-200 font-bold">-- km/h</span>
@@ -286,6 +292,13 @@
     <script>
         // Attach the session JWT only to administrative requests.
         (() => {
+            const BACKEND_DOMAIN = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+    ? window.location.host
+    : 'surakshagrid-app.onrender.com';
+
+const API_BASE = (window.location.protocol === 'https:' ? 'https://' : 'http://') + BACKEND_DOMAIN;
+const WS_BASE  = (window.location.protocol === 'https:' ? 'wss://' : 'ws://') + BACKEND_DOMAIN;
+
             const originalFetch = window.fetch.bind(window);
             const authModal = document.getElementById('auth-modal');
             const authForm = document.getElementById('auth-form');
@@ -561,7 +574,7 @@
         // Live Meteorological Telemetry Ingestion
         async function fetchRealLiveWeather() {
             try {
-                const res = await fetch(`/api/v1/telemetry/live-weather?lat=${currentPos[0]}&lng=${currentPos[1]}`);
+                const res = await fetch(`${API_BASE}/api/v1/telemetry/live-weather?lat=${currentPos[0]}&lng=${currentPos[1]}`);
                 if (res.ok) {
                     const data = await res.json();
                     const rain = data.precipitation_rate_mm || data.rain_mm || 0.0;
@@ -574,7 +587,7 @@
 
         async function runLiveMLInference(rainRate) {
             try {
-                const res = await fetch('/api/v1/ml/evaluate-risk', {
+                const res = await fetch(`${API_BASE}/api/v1/ml/evaluate-risk`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({

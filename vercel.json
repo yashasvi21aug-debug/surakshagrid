@@ -1,0 +1,20 @@
+{
+  "rewrites": [
+    {
+      "source": "/dashboard",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/citizen",
+      "destination": "/citizen.html"
+    },
+    {
+      "source": "/sos",
+      "destination": "/citizen.html"
+    },
+    {
+      "source": "/driver",
+      "destination": "/driver.html"
+    }
+  ]
+}

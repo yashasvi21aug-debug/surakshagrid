@@ -1,8 +1,8 @@
 import logging
-from pathlib import Path
+from datetime import datetime, timezone
 
 from fastapi import FastAPI
-from fastapi.responses import FileResponse
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import init_db
 from app.routes.alerts import router as alerts_router
@@ -15,13 +15,20 @@ from app.routes.ws import router as ws_router
 from app.services.weather import fetch_live_weather
 
 logger = logging.getLogger(__name__)
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 # 1. Instantiate FastAPI First
 app = FastAPI(
     title="SurakshaGrid",
     description="Flood disaster incident command and digital twin API",
     version="1.0.0",
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # 2. Register Routers AFTER app is created
@@ -38,16 +45,6 @@ app.include_router(ws_router)
 async def get_live_telemetry(lat: float = 28.6321, lng: float = 77.4446):
     return await fetch_live_weather(lat, lng)
 
-
-@app.get("/driver", include_in_schema=False)
-async def driver_app():
-    return FileResponse(PROJECT_ROOT / "driver.html")
-
-
-@app.get("/citizen", include_in_schema=False)
-@app.get("/sos", include_in_schema=False)
-async def citizen_app() -> FileResponse:
-    return FileResponse(PROJECT_ROOT / "citizen.html")
 
 @app.on_event("startup")
 async def startup_event() -> None:
@@ -85,10 +82,12 @@ async def get_active_sos_feed():
 
 
 @app.get("/")
-async def root() -> dict[str, str]:
-    return {"message": "Welcome to SurakshaGrid API"}
-
-
-@app.get("/dashboard", include_in_schema=False)
-async def dashboard() -> FileResponse:
-    return FileResponse(PROJECT_ROOT / "index.html")
+async def root() -> dict[str, object]:
+    return {
+        "service": "SurakshaGrid Incident Command & Digital Twin API",
+        "status": "operational",
+        "version": "1.0.0",
+        "docs": "/docs",
+        "websocket_endpoints": ["/ws/eoc-feed", "/ws/vehicle-telemetry"],
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
