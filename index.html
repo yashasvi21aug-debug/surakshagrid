@@ -192,12 +192,6 @@
                         <span>Weather API:</span>
                         <span class="text-slate-200">Open-Meteo Synced</span>
                     </div>
-                    const BACKEND_DOMAIN = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-    ? window.location.host
-    : 'surakshagrid-app.onrender.com';
-
-const API_BASE = (window.location.protocol === 'https:' ? 'https://' : 'http://') + BACKEND_DOMAIN;
-const WS_BASE  = (window.location.protocol === 'https:' ? 'wss://' : 'ws://') + BACKEND_DOMAIN;
                     <div class="flex justify-between items-center">
                         <span>Surface Wind:</span>
                         <span id="live-wind" class="text-slate-200 font-bold">-- km/h</span>
@@ -290,15 +284,14 @@ const WS_BASE  = (window.location.protocol === 'https:' ? 'wss://' : 'ws://') + 
 
     <!-- Engine Architecture Script -->
     <script>
+        const BACKEND_DOMAIN = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+            ? window.location.host
+            : 'surakshagrid-app.onrender.com';
+        const API_BASE = (window.location.protocol === 'https:' ? 'https://' : 'http://') + BACKEND_DOMAIN;
+        const WS_BASE = (window.location.protocol === 'https:' ? 'wss://' : 'ws://') + BACKEND_DOMAIN;
+
         // Attach the session JWT only to administrative requests.
         (() => {
-            const BACKEND_DOMAIN = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-    ? window.location.host
-    : 'surakshagrid-app.onrender.com';
-
-const API_BASE = (window.location.protocol === 'https:' ? 'https://' : 'http://') + BACKEND_DOMAIN;
-const WS_BASE  = (window.location.protocol === 'https:' ? 'wss://' : 'ws://') + BACKEND_DOMAIN;
-
             const originalFetch = window.fetch.bind(window);
             const authModal = document.getElementById('auth-modal');
             const authForm = document.getElementById('auth-form');
@@ -327,7 +320,7 @@ const WS_BASE  = (window.location.protocol === 'https:' ? 'wss://' : 'ws://') + 
                 authError.classList.add('hidden');
                 const formData = new FormData(authForm);
                 try {
-                    const data = await authenticate('/api/v1/auth/login', {
+                    const data = await authenticate(`${API_BASE}/api/v1/auth/login`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ badge_id: formData.get('badge_id').trim(), password: formData.get('password') })
@@ -338,7 +331,7 @@ const WS_BASE  = (window.location.protocol === 'https:' ? 'wss://' : 'ws://') + 
                 }
             });
             document.getElementById('demo-bypass').addEventListener('click', async () => {
-                try { saveAuth(await authenticate('/api/v1/auth/demo-bypass', { method: 'POST' })); }
+                try { saveAuth(await authenticate(`${API_BASE}/api/v1/auth/demo-bypass`, { method: 'POST' })); }
                 catch (error) { showAuth(error.message || 'Demo bypass unavailable'); }
             });
 
@@ -495,7 +488,7 @@ const WS_BASE  = (window.location.protocol === 'https:' ? 'wss://' : 'ws://') + 
             showToast("Routing Engine", "Calculating green corridor around active flood zones...", "info");
 
             try {
-                const res = await fetch('/api/v1/routes/evacuate', {
+                const res = await fetch(`${API_BASE}/api/v1/routes/evacuate`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -738,7 +731,7 @@ const WS_BASE  = (window.location.protocol === 'https:' ? 'wss://' : 'ws://') + 
             };
 
             try {
-                const res = await fetch('/api/v1/sos/', {
+                const res = await fetch(`${API_BASE}/api/v1/sos/`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload)
@@ -758,8 +751,7 @@ const WS_BASE  = (window.location.protocol === 'https:' ? 'wss://' : 'ws://') + 
 
         // Real-Time WebSocket Channel
         function initWebSocket() {
-            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const wsUrl = `${protocol}//${window.location.host}/ws/eoc-feed`;
+            const wsUrl = `${WS_BASE}/ws/eoc-feed`;
 
             try {
                 const ws = new WebSocket(wsUrl);
@@ -803,8 +795,7 @@ function createVehicleIcon(angle) {
 }
 
 function initRealTimeVehicleStream() {
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}/ws/vehicle-telemetry`;
+    const wsUrl = `${WS_BASE}/ws/vehicle-telemetry`;
 
     try {
         telemetrySocket = new WebSocket(wsUrl);

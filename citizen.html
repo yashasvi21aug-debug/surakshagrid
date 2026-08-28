@@ -111,6 +111,12 @@
     </main>
 
     <script>
+        const BACKEND_DOMAIN = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+            ? window.location.host
+            : 'surakshagrid-app.onrender.com';
+        const API_BASE = (window.location.protocol === 'https:' ? 'https://' : 'http://') + BACKEND_DOMAIN;
+        const WS_BASE = (window.location.protocol === 'https:' ? 'wss://' : 'ws://') + BACKEND_DOMAIN;
+
         (() => {
             const QUEUE_KEY = 'surakshagrid.citizen.sos.queue';
             const form = document.getElementById('sosForm');
@@ -142,7 +148,7 @@
                 setOfflineState(true);
             };
             const sendPayload = async (payload) => {
-                const response = await fetch('/api/v1/sos/', {
+                const response = await fetch(`${API_BASE}/api/v1/sos/`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload)

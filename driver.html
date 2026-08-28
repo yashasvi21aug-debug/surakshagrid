@@ -44,13 +44,18 @@
     </div>
 
     <script>
+        const BACKEND_DOMAIN = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+            ? window.location.host
+            : 'surakshagrid-app.onrender.com';
+        const API_BASE = (window.location.protocol === 'https:' ? 'https://' : 'http://') + BACKEND_DOMAIN;
+        const WS_BASE = (window.location.protocol === 'https:' ? 'wss://' : 'ws://') + BACKEND_DOMAIN;
+
         let ws = null;
         let watchId = null;
         let packetCount = 0;
 
         function connectSocket() {
-            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            ws = new WebSocket(`${protocol}//${window.location.host}/ws/vehicle-telemetry`);
+            ws = new WebSocket(`${WS_BASE}/ws/vehicle-telemetry`);
             
             ws.onopen = () => {
                 document.getElementById('status-indicator').className = 'w-3 h-3 rounded-full bg-emerald-500 animate-pulse';
