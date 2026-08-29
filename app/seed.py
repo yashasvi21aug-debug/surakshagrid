@@ -7,21 +7,21 @@ from typing import Any
 
 from geoalchemy2 import WKTElement
 from sqlalchemy import select
-from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database import AsyncSessionLocal
+from app.database import AsyncSessionLocal, SYNC_DATABASE_URL
+from app.models.flood_zone import FloodZone, InundationZone
 from app.models.gis_models import (
     CitizenSOS,
     CitizenStatus,
     EmergencyType,
     GaugeStatus,
-    InundationZone,
     IoTWaterGauge,
     RescueUnit,
     RescueUnitStatus,
 )
-from app.models.spatial import FloodZone, Shelter
+from app.models.spatial import Shelter
+from app.models.user import User, UserRole
 
 SHELTERS = [
     {"name": "Hindon High-Ground Relief Shelter", "lat": 28.6812, "lng": 77.3764, "capacity": 450},
@@ -49,8 +49,6 @@ FLOOD_ZONES = [
         "risk_level": "HIGH",
     },
 ]
-
-
 
 GAUGES = [
     {
@@ -91,7 +89,6 @@ GAUGES = [
     },
 ]
 
-
 INUNDATION_ZONES = [
     {
         "zone_name": "Yamuna-Right-Bank",
@@ -116,7 +113,6 @@ INUNDATION_ZONES = [
     },
 ]
 
-
 RESCUE_UNITS = [
     {
         "unit_name": "NDRF Boat 01",
@@ -134,6 +130,11 @@ RESCUE_UNITS = [
     },
 ]
 
+USERS = [
+    {"name": "Commander Rajesh Sharma", "phone_number": "+91-9876500001", "role": UserRole.ADMIN, "lat": 28.6321, "lng": 77.4446},
+    {"name": "Rescue Pilot Vikas Verma", "phone_number": "+91-9876500002", "role": UserRole.RESPONDER, "lat": 28.6590, "lng": 77.2490},
+    {"name": "Citizen Aarav Gupta", "phone_number": "+91-9876543210", "role": UserRole.CITIZEN, "lat": 28.6270, "lng": 77.2190},
+]
 
 SOS_RECORDS = [
     {
@@ -176,149 +177,142 @@ SOS_RECORDS = [
         "status": CitizenStatus.RESOLVED,
         "timestamp": datetime.now(timezone.utc) - timedelta(minutes=20),
     },
-    {
-        "phone_number": "+91-9866123456",
-        "emergency_type": EmergencyType.CRITICAL_TRAPPED,
-        "lat": 28.7030,
-        "lng": 77.2870,
-        "rain_rate": 64.3,
-        "risk_status": "HIGH",
-        "status": CitizenStatus.PENDING,
-        "timestamp": datetime.now(timezone.utc) - timedelta(minutes=1),
-    },
 ]
 
 
-def point_wkt(lat: float, lng: float) -> WKTElement:
+def point_wkt(lat: float, lng: float) -> Any:
+    if SYNC_DATABASE_URL.startswith("sqlite"):
+        return f"POINT({lng} {lat})"
     return WKTElement(f"POINT({lng} {lat})", srid=4326)
 
 
-def polygon_wkt(polygon_text: str) -> WKTElement:
+def polygon_wkt(polygon_text: str) -> Any:
+    if SYNC_DATABASE_URL.startswith("sqlite"):
+        return polygon_text
     return WKTElement(polygon_text, srid=4326)
+
+
+async def seed_users(session: AsyncSession) -> None:
+    for u in USERS:
+        existing = (await session.execute(select(User).where(User.phone_number == u["phone_number"]))).scalar_one_or_none()
+        if existing is None:
+            session.add(User(**u))
 
 
 async def seed_gauges(session: AsyncSession) -> None:
     for gauge in GAUGES:
-        stmt = insert(IoTWaterGauge).values(
-            sensor_name=gauge["sensor_name"],
-            location=point_wkt(gauge["lat"], gauge["lng"]),
-            current_water_level_m=gauge["current_water_level_m"],
-            warning_threshold_m=gauge["warning_threshold_m"],
-            status=gauge["status"],
-            last_ping=gauge["last_ping"],
-        )
-        stmt = stmt.on_conflict_do_update(
-            index_elements=[IoTWaterGauge.sensor_name],
-            set_={
-                "location": point_wkt(gauge["lat"], gauge["lng"]),
-                "current_water_level_m": gauge["current_water_level_m"],
-                "warning_threshold_m": gauge["warning_threshold_m"],
-                "status": gauge["status"],
-                "last_ping": gauge["last_ping"],
-            },
-        )
-        await session.execute(stmt)
+        existing = (await session.execute(select(IoTWaterGauge).where(IoTWaterGauge.sensor_name == gauge["sensor_name"]))).scalar_one_or_none()
+        if existing is None:
+            session.add(
+                IoTWaterGauge(
+                    sensor_name=gauge["sensor_name"],
+                    location=point_wkt(gauge["lat"], gauge["lng"]),
+                    current_water_level_m=gauge["current_water_level_m"],
+                    warning_threshold_m=gauge["warning_threshold_m"],
+                    status=gauge["status"],
+                    last_ping=gauge["last_ping"],
+                )
+            )
 
 
 async def seed_inundation_zones(session: AsyncSession) -> None:
     for zone in INUNDATION_ZONES:
-        stmt = insert(InundationZone).values(
-            zone_name=zone["zone_name"],
-            polygon=polygon_wkt(zone["polygon"]),
-            risk_score=zone["risk_score"],
-            estimated_water_rise=zone["estimated_water_rise"],
-            predicted_horizon_hours=zone["predicted_horizon_hours"],
-            created_at=datetime.now(timezone.utc),
-        )
-        stmt = stmt.on_conflict_do_update(
-            index_elements=[InundationZone.zone_name],
-            set_={
-                "polygon": polygon_wkt(zone["polygon"]),
-                "risk_score": zone["risk_score"],
-                "estimated_water_rise": zone["estimated_water_rise"],
-                "predicted_horizon_hours": zone["predicted_horizon_hours"],
-            },
-        )
-        await session.execute(stmt)
+        existing = (await session.execute(select(InundationZone).where(InundationZone.zone_name == zone["zone_name"]))).scalar_one_or_none()
+        if existing is None:
+            session.add(
+                InundationZone(
+                    zone_name=zone["zone_name"],
+                    polygon=polygon_wkt(zone["polygon"]),
+                    polygon_geojson=zone["polygon"],
+                    risk_score=zone["risk_score"],
+                    water_depth_m=zone["estimated_water_rise"],
+                    estimated_water_rise=zone["estimated_water_rise"],
+                    predicted_horizon_hours=zone["predicted_horizon_hours"],
+                    created_at=datetime.now(timezone.utc),
+                )
+            )
 
 
 async def seed_rescue_units(session: AsyncSession) -> None:
     for unit in RESCUE_UNITS:
-        stmt = insert(RescueUnit).values(
-            unit_name=unit["unit_name"],
-            current_location=point_wkt(unit["lat"], unit["lng"]),
-            assigned_sos_id=unit["assigned_sos_id"],
-            status=unit["status"],
-        )
-        stmt = stmt.on_conflict_do_update(
-            index_elements=[RescueUnit.unit_name],
-            set_={
-                "current_location": point_wkt(unit["lat"], unit["lng"]),
-                "assigned_sos_id": unit["assigned_sos_id"],
-                "status": unit["status"],
-            },
-        )
-        await session.execute(stmt)
+        existing = (await session.execute(select(RescueUnit).where(RescueUnit.unit_name == unit["unit_name"]))).scalar_one_or_none()
+        if existing is None:
+            session.add(
+                RescueUnit(
+                    unit_name=unit["unit_name"],
+                    current_location=point_wkt(unit["lat"], unit["lng"]),
+                    assigned_sos_id=unit["assigned_sos_id"],
+                    status=unit["status"],
+                )
+            )
 
 
 async def seed_sos_records(session: AsyncSession) -> None:
     for record in SOS_RECORDS:
-        stmt = insert(CitizenSOS).values(
-            phone_number=record["phone_number"],
-            emergency_type=record["emergency_type"],
-            location=point_wkt(record["lat"], record["lng"]),
-            rain_rate=record["rain_rate"],
-            risk_status=record["risk_status"],
-            status=record["status"],
-            timestamp=record["timestamp"],
-        )
-        stmt = stmt.on_conflict_do_nothing(index_elements=[CitizenSOS.phone_number])
-        await session.execute(stmt)
+        existing = (await session.execute(select(CitizenSOS).where(CitizenSOS.phone_number == record["phone_number"]))).scalar_one_or_none()
+        if existing is None:
+            session.add(
+                CitizenSOS(
+                    phone_number=record["phone_number"],
+                    emergency_type=record["emergency_type"],
+                    location=point_wkt(record["lat"], record["lng"]),
+                    lat=record["lat"],
+                    lng=record["lng"],
+                    rain_rate=record["rain_rate"],
+                    risk_status=record["risk_status"],
+                    status=record["status"],
+                    timestamp=record["timestamp"],
+                )
+            )
 
 
 async def seed_shelters(session: AsyncSession) -> None:
-    existing = set((await session.execute(select(Shelter.name))).scalars().all())
-    records = [
-        Shelter(
-            name=item["name"],
-            geom=point_wkt(item["lat"], item["lng"]),
-            capacity=item["capacity"],
-            is_active=True,
-        )
-        for item in SHELTERS
-        if item["name"] not in existing
-    ]
-    session.add_all(records)
+    for item in SHELTERS:
+        existing = (await session.execute(select(Shelter).where(Shelter.name == item["name"]))).scalar_one_or_none()
+        if existing is None:
+            session.add(
+                Shelter(
+                    name=item["name"],
+                    geom=point_wkt(item["lat"], item["lng"]),
+                    capacity=item["capacity"],
+                    is_active=True,
+                )
+            )
 
 
 async def seed_flood_zones(session: AsyncSession) -> None:
-    existing = set((await session.execute(select(FloodZone.zone_name))).scalars().all())
-    records = [
-        FloodZone(
-            zone_name=item["zone_name"],
-            geom=polygon_wkt(item["polygon"]),
-            water_depth_m=item["water_depth_m"],
-            risk_level=item["risk_level"],
-        )
-        for item in FLOOD_ZONES
-        if item["zone_name"] not in existing
-    ]
-    session.add_all(records)
+    for item in FLOOD_ZONES:
+        existing = (await session.execute(select(FloodZone).where(FloodZone.zone_name == item["zone_name"]))).scalar_one_or_none()
+        if existing is None:
+            session.add(
+                FloodZone(
+                    zone_name=item["zone_name"],
+                    polygon=polygon_wkt(item["polygon"]),
+                    polygon_geojson=item["polygon"],
+                    risk_score=0.85,
+                    water_depth_m=item["water_depth_m"],
+                    estimated_water_rise=item["water_depth_m"],
+                    predicted_horizon_hours=6,
+                )
+            )
 
 
 async def clear_demo_data(session: AsyncSession) -> None:
-    await session.execute(CitizenSOS.__table__.delete())
-    await session.execute(InundationZone.__table__.delete())
-    await session.execute(IoTWaterGauge.__table__.delete())
-    await session.execute(RescueUnit.__table__.delete())
-    await session.execute(Shelter.__table__.delete())
-    await session.execute(FloodZone.__table__.delete())
+    for model_cls in (CitizenSOS, InundationZone, IoTWaterGauge, RescueUnit, Shelter, User):
+        try:
+            await session.execute(model_cls.__table__.delete())
+        except Exception:
+            pass
 
 
 async def seed_all(clear_existing: bool = True) -> None:
+    from app.database import init_db_async
+    await init_db_async()
+
     async with AsyncSessionLocal() as session:
         if clear_existing:
             await clear_demo_data(session)
+        await seed_users(session)
         await seed_gauges(session)
         await seed_inundation_zones(session)
         await seed_rescue_units(session)
@@ -339,4 +333,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

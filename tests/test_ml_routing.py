@@ -33,6 +33,45 @@ async def test_evaluate_risk_endpoint(client, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_predict_ml_endpoint_dynamic_inference(client):
+    """Test POST /api/v1/ml/predict with valid live feature vectors."""
+    response = await client.post(
+        "/api/v1/ml/predict",
+        json={
+            "elevation": 12.5,
+            "precipitation_rate": 45.0,
+            "soil_saturation": 0.85,
+            "distance_to_waterway": 150.0,
+        },
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert "inundation_probability" in data
+    assert "estimated_rise_time_hours" in data
+    assert "severity_classification" in data
+    assert 0.0 <= data["inundation_probability"] <= 1.0
+
+
+@pytest.mark.asyncio
+async def test_predict_ml_endpoint_fallback_triggers(client):
+    """Test ML prediction endpoint fallback and boundary validation."""
+    response = await client.post(
+        "/api/v1/ml/predict",
+        json={
+            "elevation": 0.5,
+            "precipitation_rate": 150.0,
+            "soil_saturation": 0.99,
+            "distance_to_waterway": 10.0,
+        },
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["severity_classification"] in ("CRITICAL", "HIGH", "MEDIUM", "LOW")
+
+
+@pytest.mark.asyncio
 async def test_evaluate_risk_rejects_incomplete_payload(client):
     response = await client.post(
         "/api/v1/ml/evaluate-risk",

@@ -9,11 +9,12 @@ from geoalchemy2 import functions as func
 from sqlalchemy import cast, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.database import get_db
 from app.models.gis_models import CitizenSOS, InundationZone, IoTWaterGauge, RescueUnit
 from app.models.spatial import FloodZone, SOSIncident, Shelter
-from app.schemas import GeoJSONFeature, GeoJSONFeatureCollection, NearbySOSQuery
-from app.config import settings
+from app.schemas import EvasiveRouteRequest, EvasiveRouteResponse, GeoJSONFeature, GeoJSONFeatureCollection, NearbySOSQuery
+from app.services.routing import routing_service
 from app.services.sar import generate_mock_sar_result, process_sar_tif, result_to_geojson
 
 router = APIRouter(prefix="/api/v1/spatial", tags=["spatial"])
@@ -30,6 +31,53 @@ async def get_sar_inundation() -> dict[str, Any]:
     else:
         result = generate_mock_sar_result()
     return result_to_geojson(result)
+
+
+@router.post("/evasive-route", response_model=EvasiveRouteResponse)
+async def post_evasive_route(
+    request: EvasiveRouteRequest,
+    db: AsyncSession = Depends(get_db),
+) -> EvasiveRouteResponse:
+    """Calculate a flood-evasive routing corridor avoiding active inundation zones."""
+    active_zones = await routing_service.get_critical_inundation_zones(db)
+    raw_zones: list[dict[str, Any]] = []
+    for zone in active_zones:
+        if zone.polygon is not None:
+            geom = await db.scalar(select(func.ST_AsGeoJSON(zone.polygon)))
+            raw_zones.append({
+                "water_depth_m": float(zone.estimated_water_rise or 0.5),
+                "geometry": json.loads(geom) if isinstance(geom, str) else geom,
+            })
+    if not raw_zones:
+        sar_geojson = await get_sar_inundation()
+        for feat in sar_geojson.get("features", []):
+            raw_zones.append({
+                "water_depth_m": float(feat.get("properties", {}).get("water_depth_m", 0.5)),
+                "geometry": feat.get("geometry"),
+            })
+
+    result = await routing_service.calculate_safe_corridor(
+        origin=request.origin,
+        destination=request.destination,
+        flood_zones=raw_zones,
+    )
+    return EvasiveRouteResponse(**result)
+
+
+@router.get("/evasive-route", response_model=EvasiveRouteResponse)
+async def get_evasive_route(
+    origin_lat: float = Query(..., ge=-90, le=90),
+    origin_lng: float = Query(..., ge=-180, le=180),
+    dest_lat: float = Query(..., ge=-90, le=90),
+    dest_lng: float = Query(..., ge=-180, le=180),
+    db: AsyncSession = Depends(get_db),
+) -> EvasiveRouteResponse:
+    """Calculate a flood-evasive routing corridor via GET query parameters."""
+    req = EvasiveRouteRequest(
+        origin=(origin_lng, origin_lat),
+        destination=(dest_lng, dest_lat),
+    )
+    return await post_evasive_route(req, db=db)
 
 
 @router.get("/incidents-in-flood-zone")

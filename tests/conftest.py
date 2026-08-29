@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import os
 import uuid
 from datetime import datetime, timezone
 from types import SimpleNamespace
 from typing import Any
-import os
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 import pytest_asyncio
@@ -13,7 +14,8 @@ from httpx import ASGITransport, AsyncClient
 from app.config import settings
 from app.database import get_db
 from app.main import app
-from app.models.gis_models import CitizenStatus
+from app.models.incident import CitizenSOS, CitizenStatus, EmergencyType
+from app.schemas import FloodRiskResponse
 
 
 class FakeResult:
@@ -28,7 +30,7 @@ class FakeResult:
 
 
 class FakeAsyncSession:
-    """Small async session double for API tests that do not need a live PostGIS server."""
+    """Async database session mock for API integration tests."""
 
     def __init__(self) -> None:
         self.records: list[Any] = []
@@ -43,7 +45,7 @@ class FakeAsyncSession:
         if getattr(record, "timestamp", None) is None:
             record.timestamp = datetime.now(timezone.utc)
         self.records.append(record)
-        if record.__class__.__name__ == "CitizenSOS" and record not in self.sos:
+        if record.__class__.__name__ in ("CitizenSOS", "SOSIncident") and record not in self.sos:
             self.sos.append(record)
 
     async def commit(self) -> None:
@@ -53,11 +55,11 @@ class FakeAsyncSession:
         return None
 
     async def get(self, model: Any, record_id: str) -> Any:
-        return next((item for item in self.records if item.id == record_id), None)
+        return next((item for item in self.records if str(item.id) == str(record_id)), None)
 
     async def execute(self, statement: Any) -> FakeResult:
         statement_text = str(statement).lower()
-        if "inundation_zone" in statement_text:
+        if "inundation_zone" in statement_text or "flood_zone" in statement_text:
             return FakeResult(self.zones)
         if "iot_water_gauge" in statement_text:
             return FakeResult(self.gauges)
@@ -75,13 +77,34 @@ def fake_db() -> FakeAsyncSession:
 
 
 @pytest.fixture
-def sqlite_test_url() -> str:
-    return os.getenv("TEST_SQLITE_URL", "sqlite+aiosqlite:///:memory:")
+def mock_ml_service() -> MagicMock:
+    mock_service = MagicMock()
+    mock_service.predict_risk.return_value = FloodRiskResponse(
+        inundation_probability=0.85,
+        estimated_rise_time_hours=2.5,
+        severity_classification="HIGH",
+        is_fallback_mode=False,
+    )
+    return mock_service
 
 
 @pytest.fixture
-def postgis_test_url() -> str:
-    return os.getenv("TEST_POSTGIS_URL", settings.DATABASE_URL)
+def mock_osrm_client() -> AsyncMock:
+    mock_client = AsyncMock()
+    mock_client.get_route.return_value = {
+        "code": "Ok",
+        "routes": [
+            {
+                "distance": 4200.0,
+                "duration": 540.0,
+                "geometry": {
+                    "coordinates": [[77.2190, 28.6270], [77.2340, 28.6380], [77.2485, 28.6550]],
+                    "type": "LineString",
+                },
+            }
+        ],
+    }
+    return mock_client
 
 
 @pytest_asyncio.fixture
@@ -103,6 +126,7 @@ def make_zone():
             "id": str(uuid.uuid4()),
             "zone_name": "Yamuna Critical Sector",
             "polygon": object(),
+            "polygon_geojson": '{"type": "Polygon", "coordinates": [[[77.22, 28.62], [77.23, 28.62], [77.23, 28.64], [77.22, 28.64], [77.22, 28.62]]]}',
             "risk_score": 0.9,
             "estimated_water_rise": 1.8,
             "predicted_horizon_hours": 6,
@@ -119,9 +143,11 @@ def make_incident():
         values = {
             "id": str(uuid.uuid4()),
             "phone_number": "+919876543210",
-            "emergency_type": SimpleNamespace(value="CRITICAL_TRAPPED"),
+            "emergency_type": EmergencyType.CRITICAL_TRAPPED,
             "status": CitizenStatus.PENDING,
             "location": object(),
+            "lat": 28.6270,
+            "lng": 77.2190,
             "rain_rate": 12.0,
             "risk_status": "LOW",
             "timestamp": datetime.now(timezone.utc),

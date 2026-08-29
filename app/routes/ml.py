@@ -1,45 +1,55 @@
 from __future__ import annotations
 
 from typing import Any
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, status, Body
 
+from app.schemas import FloodRiskRequest, FloodRiskResponse
+from app.services.ml_service import ml_service
 from ml.predictor import predict_risk
 
 router = APIRouter(prefix="/api/v1/ml", tags=["ml"])
 
 
+@router.post("/predict", response_model=FloodRiskResponse)
+async def predict_flood_risk(request: FloodRiskRequest) -> FloodRiskResponse:
+    """Execute dynamic machine learning prediction for live hydro-meteorological feature vectors."""
+    return ml_service.predict_flood_risk(request)
+
+
 @router.post("/evaluate-risk")
-async def evaluate_risk(payload: dict[str, Any]) -> dict[str, Any]:
-    try:
-        lat = float(payload["lat"])
-        lng = float(payload["lng"])
-        
-        rain_val = payload.get("rain_rate", payload.get("precipitation_mm_h"))
-        dis_val = payload.get("discharge", payload.get("upstream_discharge", payload.get("upstream_river_discharge_m3s")))
-
-        if rain_val is None or dis_val is None:
-            raise KeyError("rain_rate and discharge are required")
-
-        rain_rate = float(rain_val)
-        discharge = float(dis_val)
-    except (KeyError, TypeError, ValueError) as err:
+async def evaluate_risk(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+    """Perform dynamic machine learning flood risk evaluation for legacy request payloads."""
+    if not isinstance(payload, dict):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"lat, lng, rain_rate, and discharge are required: {err}",
+            detail="Payload must be a JSON object",
+        )
+
+    has_lat = "lat" in payload
+    has_lng = "lng" in payload
+    has_rain = "rain_rate" in payload or "precipitation_rate" in payload or "precipitation_mm_h" in payload
+    has_discharge = "discharge" in payload or "upstream_discharge" in payload or "upstream_river_discharge_m3s" in payload
+
+    if not (has_lat and has_lng and has_rain and has_discharge):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="lat, lng, rain_rate, and discharge are required",
+        )
+
+    try:
+        request_model = FloodRiskRequest(**payload)
+    except Exception as err:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid feature vector payload: {err}",
         ) from err
 
-    kwargs: dict[str, Any] = {}
-    if "soil_moisture" in payload:
-        kwargs["soil_moisture"] = float(payload["soil_moisture"])
-    if "elevation" in payload:
-        kwargs["elevation"] = float(payload["elevation"])
-    if "drainage_index" in payload:
-        kwargs["drainage_index"] = float(payload["drainage_index"])
-
     return predict_risk(
-        lat=lat,
-        lng=lng,
-        rain_rate=rain_rate,
-        discharge=discharge,
-        **kwargs,
+        lat=request_model.lat or 28.6321,
+        lng=request_model.lng or 77.4446,
+        rain_rate=request_model.precipitation_rate,
+        discharge=request_model.upstream_discharge,
+        soil_moisture=request_model.soil_saturation,
+        elevation=request_model.elevation,
+        distance_to_waterway=request_model.distance_to_waterway,
     )

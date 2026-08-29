@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="theme-color" content="#081014" />
-  <title>{% block title %}SurakshaGrid — Incident Command{% endblock %}</title>
+  <title>{% block title %}SurakshaGrid — Flood Resiliency & Disaster Response Network{% endblock %}</title>
 
   <!-- Google Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -38,6 +38,11 @@
     {% include "components/footer.html" %}
   {% endblock %}
 
+  <!-- Core Modular JavaScript Services -->
+  <script src="/static/js/api.js"></script>
+  <script src="/static/js/ws.js"></script>
+  <script src="/static/js/map.js"></script>
+  <script src="/static/js/ui.js"></script>
   {% block scripts %}{% endblock %}
 </body>
 </html>

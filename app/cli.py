@@ -135,8 +135,9 @@ def main(argv: list[str] | None = None) -> int:
     seed_parser = subparsers.add_parser("seed", help="Seed demo records into database")
     seed_parser.add_argument("--keep-existing", action="store_true", help="Do not clear existing database records")
 
-    # Command: train-ml
-    subparsers.add_parser("train-ml", help="Train and save XGBoost model weights")
+    # Command: train / train-ml
+    subparsers.add_parser("train", help="Train and save ML model pipeline artifacts")
+    subparsers.add_parser("train-ml", help="Train and save ML model pipeline artifacts")
 
     # Command: process-sar
     sar_parser = subparsers.add_parser("process-sar", help="Process Sentinel-1 SAR GeoTIFF")
@@ -151,6 +152,7 @@ def main(argv: list[str] | None = None) -> int:
     handlers = {
         "run": cmd_run,
         "seed": cmd_seed,
+        "train": cmd_train_ml,
         "train-ml": cmd_train_ml,
         "process-sar": cmd_process_sar,
     }

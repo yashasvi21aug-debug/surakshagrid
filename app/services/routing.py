@@ -1,17 +1,22 @@
 from __future__ import annotations
 
 import json
-import math
 import logging
+import math
 from dataclasses import dataclass
 from typing import Any, Iterable, Sequence
 
 import httpx
 from geoalchemy2 import functions as func
-from shapely.geometry import LineString, Polygon
+from shapely.geometry import LineString, Point, Polygon
 from shapely.ops import unary_union
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+
+try:
+    from geopy.distance import geodesic as geopy_geodesic
+except ImportError:
+    geopy_geodesic = None
 
 from app.models.gis_models import InundationZone
 
@@ -24,8 +29,14 @@ def haversine_distance_km(origin: Coordinate, destination: Coordinate) -> float:
     """Calculate Great-Circle geodesic distance between two [lng, lat] coordinates in km."""
     lng1, lat1 = origin
     lng2, lat2 = destination
-    r = 6371.0  # Earth radius in km
 
+    if geopy_geodesic is not None:
+        try:
+            return float(geopy_geodesic((lat1, lng1), (lat2, lng2)).km)
+        except Exception:
+            pass
+
+    r = 6371.0  # Earth radius in km
     phi1 = math.radians(lat1)
     phi2 = math.radians(lat2)
     delta_phi = math.radians(lat2 - lat1)
@@ -47,7 +58,7 @@ class RoutingError(RuntimeError):
 
 
 class RoutingService:
-    """Unified routing engine with dynamic OSRM integration and Shapely geodesic fallback."""
+    """Unified routing engine with dynamic OSRM integration and Shapely centroid-avoidance fallback."""
 
     def __init__(self, osrm_base_url: str = "http://localhost:5000", timeout: float = 15.0) -> None:
         self.osrm_base_url = osrm_base_url.rstrip("/")
@@ -279,11 +290,9 @@ class RoutingService:
             depth = 0.0
             coordinates = raw_zone
             if isinstance(raw_zone, dict):
-                depth = float(
-                    raw_zone.get("water_depth_m", raw_zone.get("waterDepth", raw_zone.get("depth", 0)))
-                    or 0
-                )
-                coordinates = raw_zone.get("coordinates", raw_zone.get("polygon"))
+                val = raw_zone.get("water_depth_m") or raw_zone.get("waterDepth") or raw_zone.get("depth") or raw_zone.get("risk_score") or 0.0
+                depth = float(val)
+                coordinates = raw_zone.get("coordinates") or raw_zone.get("polygon") or raw_zone.get("geometry")
             polygon = cls._polygon_from_coordinates(coordinates)
             if polygon is not None:
                 zones.append(ActiveFloodZone(polygon=polygon, water_depth_m=depth))
@@ -292,6 +301,39 @@ class RoutingService:
     @staticmethod
     def route_intersects_active_flood(route: LineString, zones: Iterable[ActiveFloodZone]) -> bool:
         return any(zone.water_depth_m > 0.3 and route.intersects(zone.polygon) for zone in zones)
+
+    def _centroid_bypass_waypoints(
+        self, origin: Coordinate, destination: Coordinate, zones: Sequence[ActiveFloodZone]
+    ) -> list[Coordinate]:
+        """Compute bypass waypoints by shifting around intersecting flood polygon centroids."""
+        intersecting = [zone for zone in zones if zone.water_depth_m > 0.3]
+        if not intersecting:
+            return []
+
+        dx = destination[0] - origin[0]
+        dy = destination[1] - origin[1]
+        length = math.hypot(dx, dy) or 1.0
+        # Normal unit vector perpendicular to direct corridor line
+        nx, ny = -dy / length, dx / length
+
+        waypoints: list[Coordinate] = []
+        for zone in intersecting:
+            centroid = zone.polygon.centroid
+            cx, cy = centroid.x, centroid.y
+
+            # Vector from centroid to mid point
+            mid_x = (origin[0] + destination[0]) / 2.0
+            mid_y = (origin[1] + destination[1]) / 2.0
+            dot = (mid_x - cx) * nx + (mid_y - cy) * ny
+            direction = 1.0 if dot >= 0 else -1.0
+
+            # Shift offset coordinate ~ 0.008 degrees (~800m) away from centroid
+            offset_dist = 0.008 + max(0.002, math.sqrt(zone.polygon.area))
+            wp_lng = cx + direction * nx * offset_dist
+            wp_lat = cy + direction * ny * offset_dist
+            waypoints.append((round(wp_lng, 5), round(wp_lat, 5)))
+
+        return waypoints
 
     @staticmethod
     def _perimeter_waypoints(zones: Sequence[ActiveFloodZone]) -> list[list[Coordinate]]:
@@ -316,35 +358,47 @@ class RoutingService:
         flood_zones: Iterable[Any],
         profile: str = "driving",
     ) -> dict[str, Any]:
+        """Calculate flood-evasive routing corridor avoiding active flood polygons."""
         zones = self.normalize_flood_zones(flood_zones)
         initial = await self.fetch_osrm_route(origin, destination, profile=profile)
         initial_line = self._route_line(initial)
         active_zones = [zone for zone in zones if zone.water_depth_m > 0.3]
+        intersecting_zones = [zone for zone in active_zones if initial_line.intersects(zone.polygon)]
 
         selected = initial
         status = "safe"
-        if self.route_intersects_active_flood(initial_line, active_zones):
+        if intersecting_zones:
             status = "rerouted"
             selected = None
+
+            # Try perimeter waypoints first
             for waypoints in self._perimeter_waypoints(active_zones):
                 candidate = await self.fetch_osrm_route(origin, destination, waypoints, profile=profile)
                 if not self.route_intersects_active_flood(self._route_line(candidate), active_zones):
                     selected = candidate
                     break
+
+            # Fallback to centroid shift waypoints
             if selected is None:
-                # Dynamic geodesic perimeter fallback
-                selected = self._geodesic_fallback_route(origin, destination, self._perimeter_waypoints(active_zones)[0])
+                centroid_wps = self._centroid_bypass_waypoints(origin, destination, intersecting_zones)
+                candidate = await self.fetch_osrm_route(origin, destination, centroid_wps, profile=profile)
+                selected = candidate
 
         route = selected["routes"][0]
         coordinates = route["geometry"]["coordinates"]
+        dist_m = float(route.get("distance", 0))
+        dur_s = float(route.get("duration", 0))
+
         return {
             "status": status,
             "safe_bypass_geojson": {"type": "LineString", "coordinates": coordinates},
-            "distance_km": round(float(route.get("distance", 0)) / 1000, 3),
-            "estimated_travel_time_mins": round(float(route.get("duration", 0)) / 60, 1),
+            "distance_km": round(dist_m / 1000.0, 3),
+            "estimated_travel_time_mins": round(dur_s / 60.0, 1),
             "flood_zones_considered": len(active_zones),
+            "intersections_avoided": len(intersecting_zones),
         }
 
 
 # Alias for backward compatibility
 FloodAvoidanceRoutingService = RoutingService
+routing_service = RoutingService()
