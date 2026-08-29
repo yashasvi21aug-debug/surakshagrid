@@ -12,11 +12,11 @@ export class SurakshaMap {
     // Add compact Leaflet zoom control in top-right
     L.control.zoom({ position: 'topright' }).addTo(this.map);
 
-    // Carto Dark Matter Basemap Tiles
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    // Standard OpenStreetMap Tiles with Tactical Dark Filter
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
-      subdomains: 'abcd',
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+      className: 'map-tiles-dark',
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
     }).addTo(this.map);
 
     // Invalidate map size on load to ensure smooth rendering without tile seams
