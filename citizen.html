@@ -21,51 +21,45 @@
 <script>
 const BACKEND_DOMAIN=(window.location.hostname==='localhost'||window.location.hostname==='127.0.0.1')?window.location.host:'surakshagrid-app.onrender.com';const API_BASE=(window.location.protocol==='https:'?'https://':'http://')+BACKEND_DOMAIN;
 (()=>{const form=document.getElementById('sos-form'),button=document.getElementById('dispatch-button'),error=document.getElementById('form-error'),status=document.getElementById('location-status'),dot=document.getElementById('location-dot'),modal=document.getElementById('success-modal'),ticket=document.getElementById('ticket-value'),fallback={lat:28.6322,lng:77.4446};let coords=null;const makeTicket=()=>`TICK-${Math.floor(1000+Math.random()*9000)}`;const acquireGps=()=>new Promise(resolve=>{if(!navigator.geolocation){dot.className='location-dot fallback';status.textContent=`GPS UNAVAILABLE - FALLBACK ${fallback.lat}, ${fallback.lng}`;resolve(fallback);return}navigator.geolocation.getCurrentPosition(p=>{coords={lat:p.coords.latitude,lng:p.coords.longitude};dot.className='location-dot locked';status.textContent=`GPS LOCKED - ${coords.lat.toFixed(5)}, ${coords.lng.toFixed(5)} (${Math.round(p.coords.accuracy)}m accuracy)`;resolve(coords)},()=>{dot.className='location-dot fallback';status.textContent=`GPS UNAVAILABLE - FALLBACK ${fallback.lat}, ${fallback.lng}`;resolve(fallback)},{enableHighAccuracy:true,timeout:4000,maximumAge:0})});const openSuccess=id=>{ticket.textContent=id;modal.classList.add('visible');document.getElementById('return-button').focus()};form.addEventListener('submit',async event=>{event.preventDefault();error.textContent='';if(!form.checkValidity()){form.reportValidity();return}const data=new FormData(form),gps=coords||await acquireGps(),phone=data.get('phone').trim(),payload={phone,emergencyType:data.get('emergencyType'),lat:gps.lat,lng:gps.lng,victim_name:'Citizen SOS',contact_number:phone,latitude:gps.lat,longitude:gps.lng,details:data.get('notes').trim()||'Emergency flood rescue request from mobile portal.'};button.disabled=true;button.textContent='TRANSMITTING...';try{const response=await fetch(`${API_BASE}/api/v1/sos/`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});if(!response.ok)throw new Error(`Backend returned ${response.status}`);const result=await response.json();button.textContent='SOS TRANSMITTED - NDRF UNIT DISPATCHED';openSuccess(result.id||result.incident_id||makeTicket())}catch(dispatchError){console.warn('Backend waking up; confirming local dispatch ticket.',dispatchError);button.textContent='SOS TRANSMITTED - NDRF UNIT DISPATCHED';openSuccess(makeTicket())}finally{button.disabled=false}});document.querySelectorAll('input[name="emergencyType"]').forEach(input=>input.addEventListener('change',()=>{document.querySelectorAll('.triage').forEach(card=>card.classList.remove('selected'));input.closest('.triage').classList.add('selected')}));document.getElementById('return-button').addEventListener('click',()=>{modal.classList.remove('visible');button.textContent='DISPATCH EMERGENCY SOS'});acquireGps()})();
-</script>
-</body>
-<script>
+ 
 (() => {
 	let sosBroadcast = null;
-	try { sosBroadcast = new BroadcastChannel('suraksha_grid_realtime'); } catch (error) {}
-	const form = document.getElementById('sos-form');
-	const fallback = { lat: 28.6322, lng: 77.4446 };
 	let pendingIncident = null;
+	const fallback = { lat: 28.6322, lng: 77.4446 };
+	try { sosBroadcast = new BroadcastChannel('suraksha_grid_realtime'); } catch (error) {}
 	const broadcastIncident = (incidentPayload) => {
 		try { if (sosBroadcast) sosBroadcast.postMessage({ type: 'NEW_INCIDENT', payload: incidentPayload }); } catch (error) {}
 		try { localStorage.setItem('suraksha_last_sos', JSON.stringify({ timestamp: Date.now(), payload: incidentPayload })); } catch (error) {}
 	};
 	const originalFetch = window.fetch.bind(window);
 	window.fetch = async (...args) => {
-		const requestUrl = String(args[0]);
 		try {
 			return await originalFetch(...args);
 		} finally {
-			if (pendingIncident && requestUrl.includes('/api/v1/sos/')) {
+			if (pendingIncident && String(args[0]).includes('/api/v1/sos/')) {
 				broadcastIncident(pendingIncident);
 				pendingIncident = null;
 			}
 		}
 	};
-
-	form.addEventListener('submit', () => {
-		const formData = new FormData(form);
+	document.getElementById('sos-form').addEventListener('submit', () => {
+		const formData = new FormData(document.getElementById('sos-form'));
 		const selectedType = formData.get('emergencyType');
 		if (!selectedType) return;
-		const generatedTicket = `TICK-${Math.floor(1000 + Math.random() * 9000)}`;
-		const currentPos = window.currentPos || fallback;
-		const incidentPayload = {
-			ticket_id: generatedTicket,
+		const position = window.currentPos || fallback;
+		pendingIncident = {
+			ticket_id: `TICK-${Math.floor(1000 + Math.random() * 9000)}`,
 			emergency_type: selectedType,
 			victim_name: 'Citizen SOS',
-			contact: document.getElementById('contact-input').value.trim() || '+919451195342',
-			lat: (window.currentPos && window.currentPos.lat) || fallback.lat,
-			lng: (window.currentPos && window.currentPos.lng) || fallback.lng,
-			details: document.getElementById('notes-input').value.trim() || 'Water entering ground floor, request unit dispatch.',
+			contact: document.getElementById('contact-input')?.value.trim() || '+919451195342',
+			lat: position.lat || fallback.lat,
+			lng: position.lng || fallback.lng,
+			details: document.getElementById('notes-input')?.value.trim() || 'Water entering ground floor, request unit dispatch.',
 			created_at: new Date().toISOString()
 		};
-		pendingIncident = incidentPayload;
-		broadcastIncident(incidentPayload);
-	});
+		broadcastIncident(pendingIncident);
+	}, { capture: true });
 })();
 </script>
+</body>
 </html>
