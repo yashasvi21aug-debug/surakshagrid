@@ -63,3 +63,29 @@ const BACKEND_DOMAIN=(window.location.hostname==='localhost'||window.location.ho
 </script>
 </body>
 </html>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  const btn = document.querySelector('button[type="submit"]') || Array.from(document.querySelectorAll('button')).find(b => b.innerText.includes('DISPATCH'));
+  if (btn) {
+    btn.addEventListener('click', (e) => {
+      const ticket = 'TICK-' + Math.floor(1000 + Math.random() * 9000);
+      const contactVal = document.querySelector('input[type="tel"]')?.value || '+919451195342';
+      const notesVal = document.querySelector('input[placeholder*="notes"], textarea')?.value || 'Water rising, evacuation needed';
+      const payload = {
+        ticket_id: ticket,
+        lat: 28.6322,
+        lng: 77.4446,
+        contact: contactVal,
+        notes: notesVal
+      };
+      localStorage.setItem('SURAKSHA_DISPATCH_EVENT', JSON.stringify({ time: Date.now(), payload: payload }));
+      fetch('https://surakshagrid-app.onrender.com/api/v1/sos/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      }).catch(err => console.log(err));
+    });
+  }
+});
+</script>
