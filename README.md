@@ -4,7 +4,7 @@ SurakshaGrid is an open disaster management platform designed to coordinate emer
 
 ---
 
-## 🏗️ System Architecture
+## System Architecture
 
 ```mermaid
 flowchart TD
@@ -48,7 +48,7 @@ flowchart TD
 
 ---
 
-## ⚡ Core Features & Capabilities
+## Core Features & Capabilities
 
 - **Real-Time Emergency Lifecycle**: Citizen SOS dispatch, command dashboard alerting, responder assignment, and incident resolution.
 - **Flood Inundation Prediction**: Scikit-Learn pipeline predicting water rise and flood probability with a deterministic **Rational Runoff ($Q = C \cdot I \cdot A$)** physics fallback.
@@ -58,7 +58,7 @@ flowchart TD
 
 ---
 
-## 🚀 Local Setup & Execution
+## Local Setup & Execution
 
 ### Prerequisites
 
@@ -98,7 +98,7 @@ python -m app run
 
 ---
 
-## 🐳 Containerized Deployment (Docker)
+## Containerized Deployment (Docker)
 
 SurakshaGrid is containerized using a multi-stage `Dockerfile` executing as a non-root system user (`appuser` UID 10001).
 
@@ -122,7 +122,7 @@ The application services will be accessible at:
 
 ---
 
-## 🧪 Running Automated Tests
+## Running Automated Tests
 
 Run the complete test suite using `pytest`:
 
@@ -136,7 +136,7 @@ python -m pytest -v
 
 ---
 
-## 🛠️ Engineering Highlights
+## Engineering Highlights
 
 ### 1. Flood-Evasive Geospatial Routing Algorithm
 When an emergency vehicle requires dispatch, `app/services/routing.py` constructs a spatial corridor between origin and destination coordinates. Using `shapely`, the route line is tested against active flood polygons (`water_depth_m > 0.3m` or `risk_score >= 0.75`). If an intersection occurs, the engine calculates a normal perpendicular vector from the intersecting polygon's centroid to generate safe bypass waypoints around the hazard.

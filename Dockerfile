@@ -1,4 +1,5 @@
-# Build stage
+# Multi-stage Dockerfile for SurakshaGrid Geospatial Backend
+# Stage 1: Build Dependencies
 FROM python:3.11-slim AS builder
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -24,7 +25,7 @@ RUN pip install --upgrade pip \
 COPY . .
 RUN PYTHONPATH=/install/lib/python3.11/site-packages python -m ml.train_model
 
-# Runtime stage
+# Stage 2: Clean Runtime Image
 FROM python:3.11-slim AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -34,12 +35,13 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         curl \
+        netcat-openbsd \
         libgdal-dev \
         libgeos-dev \
         libproj-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Create non-root system user and group
+# Non-root application user execution
 RUN groupadd -g 10001 appgroup \
     && useradd -u 10001 -g appgroup -s /bin/bash -m appuser
 

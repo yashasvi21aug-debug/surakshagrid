@@ -117,6 +117,17 @@ def cmd_process_sar(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_simulate(args: argparse.Namespace) -> int:
+    """Run dynamic live disaster simulation harness."""
+    print(f"Starting SurakshaGrid live disaster simulation (duration: {args.duration or 'infinite'}s, interval: {args.interval}s)...")
+    from app.simulation import simulation_harness
+    try:
+        asyncio.run(simulation_harness.start(duration_seconds=args.duration))
+    except KeyboardInterrupt:
+        print("\nSimulation stopped by user.")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="python -m app",
@@ -144,6 +155,11 @@ def main(argv: list[str] | None = None) -> int:
     sar_parser.add_argument("--input", required=True, help="Path to SAR GeoTIFF file")
     sar_parser.add_argument("--threshold-db", type=float, default=-14.0, help="Backscatter threshold in dB")
 
+    # Command: simulate
+    sim_parser = subparsers.add_parser("simulate", help="Run dynamic live disaster simulation harness")
+    sim_parser.add_argument("--duration", type=float, default=None, help="Simulation duration in seconds (default: infinite)")
+    sim_parser.add_argument("--interval", type=float, default=2.0, help="Tick interval in seconds (default: 2.0)")
+
     # Parse args (default to "run" if no subcommand specified)
     parsed_args = parser.parse_args(argv)
     if not parsed_args.command:
@@ -155,6 +171,7 @@ def main(argv: list[str] | None = None) -> int:
         "train": cmd_train_ml,
         "train-ml": cmd_train_ml,
         "process-sar": cmd_process_sar,
+        "simulate": cmd_simulate,
     }
 
     handler = handlers.get(parsed_args.command)

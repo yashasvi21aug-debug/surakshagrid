@@ -16,6 +16,12 @@ async def predict_flood_risk(request: FloodRiskRequest) -> FloodRiskResponse:
     return ml_service.predict_flood_risk(request)
 
 
+@router.post("/predict-inundation", response_model=FloodRiskResponse)
+async def predict_inundation_risk(request: FloodRiskRequest) -> FloodRiskResponse:
+    """Predict 6-12 hour subcatchment flood inundation probability and estimated water rise."""
+    return ml_service.predict_subcatchment_risk(request)
+
+
 @router.post("/evaluate-risk")
 async def evaluate_risk(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
     """Perform dynamic machine learning flood risk evaluation for legacy request payloads."""

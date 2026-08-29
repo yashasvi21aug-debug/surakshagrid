@@ -12,11 +12,12 @@ class Settings(BaseSettings):
     APP_ENV: str = "development"
     DEBUG: bool = False
 
-    # Security & Authentication
+    # Security & CORS
     SECRET_KEY: str = "change-me-in-production"
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
     OFFICER_3492_PASSWORD_HASH: str = ""
+    CORS_ALLOWED_ORIGINS: list[str] = ["*"]
 
     # Database Configuration
     DATABASE_URL: str = "sqlite:///./surakshagrid.db"

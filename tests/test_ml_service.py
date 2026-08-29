@@ -35,7 +35,12 @@ def test_ml_inference_service_predict():
     assert response.estimated_water_rise_meters >= 0.0
     assert response.estimated_rise_time_hours > 0.0
     assert response.severity_classification in ("LOW", "MODERATE", "HIGH", "CRITICAL")
-    assert response.model_source in ("ml_pipeline_joblib", "rational_runoff_hydrodynamic_fallback", "hydrodynamic_physical_fallback")
+    assert response.model_source in (
+        "xgboost_hydrology_json",
+        "ml_pipeline_joblib",
+        "rational_runoff_hydrodynamic_fallback",
+        "hydrodynamic_physical_fallback",
+    )
 
 
 def test_ml_inference_service_fallback(tmp_path):

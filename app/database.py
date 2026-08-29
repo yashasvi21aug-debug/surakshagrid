@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import os
 from collections.abc import AsyncGenerator, Generator
+from typing import Any
 
 from sqlalchemy import create_engine
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -33,10 +34,18 @@ connect_args = {"check_same_thread": False} if SYNC_DATABASE_URL.startswith("sql
 engine = create_engine(SYNC_DATABASE_URL, connect_args=connect_args)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-async_engine = create_async_engine(
-    ASYNC_DATABASE_URL,
-    connect_args={"check_same_thread": False} if ASYNC_DATABASE_URL.startswith("sqlite") else {},
-)
+async_engine_kwargs: dict[str, Any] = {}
+if ASYNC_DATABASE_URL.startswith("sqlite"):
+    async_engine_kwargs["connect_args"] = {"check_same_thread": False}
+else:
+    async_engine_kwargs.update({
+        "pool_size": 20,
+        "max_overflow": 10,
+        "pool_pre_ping": True,
+        "pool_recycle": 3600,
+    })
+
+async_engine = create_async_engine(ASYNC_DATABASE_URL, **async_engine_kwargs)
 AsyncSessionLocal = async_sessionmaker(async_engine, expire_on_commit=False, class_=AsyncSession)
 
 
@@ -81,7 +90,6 @@ async def init_db_async() -> None:
         logger.info("Successfully initialized async database schema DDL tables.")
     except Exception as err:
         logger.warning("Could not execute async Base.metadata.create_all DDL: %s", err)
-
 
 
 def run_migrations() -> None:

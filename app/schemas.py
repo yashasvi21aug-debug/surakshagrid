@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -7,22 +8,32 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from app.models.gis_models import CitizenStatus, EmergencyType
 
 
+def sanitize_text(value: str) -> str:
+    """Strip XSS HTML tags, script vectors, and unprintable characters."""
+    if not value:
+        return value
+    clean = re.sub(r"<[^>]*?>", "", value)
+    clean = "".join(ch for ch in clean if ch.isprintable())
+    return clean.strip()
+
+
 class SOSCreateRequest(BaseModel):
     phone: str = Field(..., min_length=8, max_length=32)
     emergencyType: EmergencyType = Field(..., alias="emergencyType")
-    lat: float = Field(..., ge=-90, le=90)
-    lng: float = Field(..., ge=-180, le=180)
-    rainRate: float | None = Field(default=None, ge=0)
+    lat: float = Field(..., ge=-90.0, le=90.0)
+    lng: float = Field(..., ge=-180.0, le=180.0)
+    rainRate: float | None = Field(default=None, ge=0.0)
 
     model_config = ConfigDict(populate_by_name=True)
 
     @field_validator("phone")
     @classmethod
     def validate_phone(cls, value: str) -> str:
-        digits = "".join(ch for ch in value if ch.isdigit())
+        clean_val = sanitize_text(value)
+        digits = "".join(ch for ch in clean_val if ch.isdigit())
         if len(digits) < 8:
             raise ValueError("phone must contain at least 8 digits")
-        return value.strip()
+        return clean_val
 
 
 class SOSStatusUpdate(BaseModel):
@@ -32,16 +43,16 @@ class SOSStatusUpdate(BaseModel):
 class SOSListQuery(BaseModel):
     page: int = Field(default=1, ge=1)
     page_size: int = Field(default=20, ge=1, le=100)
-    min_lat: float | None = Field(default=None, ge=-90, le=90)
-    max_lat: float | None = Field(default=None, ge=-90, le=90)
-    min_lng: float | None = Field(default=None, ge=-180, le=180)
-    max_lng: float | None = Field(default=None, ge=-180, le=180)
+    min_lat: float | None = Field(default=None, ge=-90.0, le=90.0)
+    max_lat: float | None = Field(default=None, ge=-90.0, le=90.0)
+    min_lng: float | None = Field(default=None, ge=-180.0, le=180.0)
+    max_lng: float | None = Field(default=None, ge=-180.0, le=180.0)
 
 
 class NearbySOSQuery(BaseModel):
-    lat: float = Field(..., ge=-90, le=90)
-    lng: float = Field(..., ge=-180, le=180)
-    radius_km: float = Field(..., gt=0, le=100)
+    lat: float = Field(..., ge=-90.0, le=90.0)
+    lng: float = Field(..., ge=-180.0, le=180.0)
+    radius_km: float = Field(..., gt=0.0, le=100.0)
 
 
 class SOSResponse(BaseModel):
@@ -97,7 +108,6 @@ class FloodRiskRequest(BaseModel):
         return values
 
 
-
 class FloodRiskResponse(BaseModel):
     inundation_probability: float = Field(..., ge=0.0, le=1.0)
     estimated_water_rise_meters: float = Field(..., ge=0.0)
@@ -119,6 +129,16 @@ class EvasiveRouteRequest(BaseModel):
     destination: tuple[float, float] = Field(..., description="[longitude, latitude] of destination point")
     avoid_water_depth_m: float = Field(default=0.3, ge=0.0, description="Minimum water depth in meters to avoid")
 
+    @field_validator("origin", "destination")
+    @classmethod
+    def validate_coordinates(cls, coords: tuple[float, float]) -> tuple[float, float]:
+        lng, lat = coords
+        if not (-180.0 <= lng <= 180.0):
+            raise ValueError(f"Longitude {lng} outside valid range [-180, 180]")
+        if not (-90.0 <= lat <= 90.0):
+            raise ValueError(f"Latitude {lat} outside valid range [-90, 90]")
+        return coords
+
 
 class EvasiveRouteResponse(BaseModel):
     status: str = Field(..., description="safety classification: safe, rerouted, or warning")
@@ -127,5 +147,3 @@ class EvasiveRouteResponse(BaseModel):
     estimated_travel_time_mins: float = Field(..., ge=0.0)
     flood_zones_considered: int = Field(default=0)
     intersections_avoided: int = Field(default=0)
-
-

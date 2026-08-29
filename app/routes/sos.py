@@ -7,7 +7,7 @@ from geoalchemy2 import functions as func
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database import get_db
+from app.database import get_async_db
 from app.models.gis_models import CitizenSOS, CitizenStatus, EmergencyType
 from app.schemas import NearbySOSQuery, SOSCreateRequest, SOSListQuery, SOSResponse, SOSStatusUpdate
 from app.websocket_manager import manager
@@ -18,7 +18,7 @@ router = APIRouter(prefix="/api/v1/sos", tags=["sos"])
 @router.post("/", response_model=SOSResponse, status_code=status.HTTP_201_CREATED)
 async def create_sos(
     payload: SOSCreateRequest,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ) -> SOSResponse:
     """Trigger a new citizen emergency SOS alert, persist record, and broadcast event."""
     point_wkt = func.ST_SetSRID(func.ST_Point(payload.lng, payload.lat), 4326)
@@ -68,7 +68,7 @@ async def create_sos(
 @router.post("/{id}/acknowledge")
 async def acknowledge_sos(
     id: str,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ) -> dict[str, Any]:
     """Acknowledge & dispatch rescue response for an active SOS incident."""
     incident = await db.get(CitizenSOS, id)
@@ -96,7 +96,7 @@ async def acknowledge_sos(
 @router.post("/{id}/resolve")
 async def resolve_sos(
     id: str,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ) -> dict[str, Any]:
     """Mark an active SOS incident as resolved / rescued."""
     incident = await db.get(CitizenSOS, id)
@@ -129,7 +129,7 @@ async def list_sos(
     max_lat: float | None = Query(default=None, ge=-90, le=90),
     min_lng: float | None = Query(default=None, ge=-180, le=180),
     max_lng: float | None = Query(default=None, ge=-180, le=180),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ) -> dict[str, Any]:
     """List SOS incidents with spatial bounding box filtering and pagination."""
     stmt = select(CitizenSOS)
@@ -184,7 +184,7 @@ async def list_sos(
 async def update_sos_status(
     id: str,
     payload: SOSStatusUpdate,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ) -> dict[str, Any]:
     """Update status for backward compatibility."""
     incident = await db.get(CitizenSOS, id)

@@ -12,7 +12,7 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
 from app.config import settings
-from app.database import get_db
+from app.database import get_async_db, get_db
 from app.main import app
 from app.models.incident import CitizenSOS, CitizenStatus, EmergencyType
 from app.schemas import FloodRiskResponse
@@ -27,6 +27,9 @@ class FakeResult:
 
     def all(self) -> list[Any]:
         return self.records
+
+    def first(self) -> Any:
+        return self.records[0] if self.records else None
 
 
 class FakeAsyncSession:
@@ -63,11 +66,22 @@ class FakeAsyncSession:
             return FakeResult(self.zones)
         if "iot_water_gauge" in statement_text:
             return FakeResult(self.gauges)
+        if "count" in statement_text:
+            return FakeResult([len(self.sos)])
         return FakeResult(self.sos)
 
     async def scalar(self, statement: Any) -> Any:
         if self.scalar_values:
             return self.scalar_values.pop(0)
+        statement_text = str(statement).lower()
+        if "count" in statement_text:
+            return len(self.sos)
+        if "st_asgeojson" in statement_text:
+            return '{"type": "Polygon", "coordinates": [[[77.22, 28.62], [77.23, 28.62], [77.23, 28.64], [77.22, 28.64], [77.22, 28.62]]]}'
+        if "st_x" in statement_text:
+            return 77.2190
+        if "st_y" in statement_text:
+            return 28.6270
         return None
 
 
@@ -113,6 +127,7 @@ async def client(fake_db: FakeAsyncSession):
         yield fake_db
 
     app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_async_db] = override_get_db
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver", follow_redirects=True) as test_client:
         yield test_client

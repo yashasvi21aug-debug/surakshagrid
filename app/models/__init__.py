@@ -6,6 +6,7 @@ from app.models.gis_models import GaugeStatus, IoTWaterGauge, RescueUnit, Rescue
 from app.models.incident import CitizenSOS, CitizenStatus, EmergencyType, SOSIncident
 from app.models.route_log import RouteLog
 from app.models.spatial import Shelter
+from app.models.spatial_models import FloodPolygon, Incident, IncidentSeverity, IncidentStatus, SensorGauge
 from app.models.user import User, UserRole
 
 __all__ = [
@@ -13,13 +14,18 @@ __all__ = [
     "CitizenSOS",
     "CitizenStatus",
     "EmergencyType",
+    "FloodPolygon",
     "FloodZone",
     "GaugeStatus",
+    "Incident",
+    "IncidentSeverity",
+    "IncidentStatus",
     "InundationZone",
     "IoTWaterGauge",
     "RescueUnit",
     "RescueUnitStatus",
     "RouteLog",
+    "SensorGauge",
     "Shelter",
     "SOSIncident",
     "User",
