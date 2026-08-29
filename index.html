@@ -269,7 +269,7 @@
                     <p class="text-[10px] text-slate-500 mt-2 mb-1 shrink-0 font-mono">Select incident ticket to target GIS viewport:</p>
 
                     <!-- Feed Container -->
-                    <div id="incident-list" class="flex-1 overflow-y-auto space-y-2 pr-1 mt-1 font-sans">
+                    <div id="incident-queue" class="flex-1 overflow-y-auto space-y-2 pr-1 mt-1 font-sans">
                         <div id="empty-state" class="text-center py-16 text-slate-600 text-xs font-mono">
                             <i class="fa-solid fa-satellite-dish text-xl mb-2 block opacity-40"></i>
                             No active distress incidents in local sector queue.
@@ -699,7 +699,7 @@
             const emptyState = document.getElementById('empty-state');
             if (emptyState) emptyState.remove();
 
-            const list = document.getElementById('incident-list');
+            const list = document.getElementById('incident-queue');
             const countElem = document.getElementById('sos-count');
             countElem.innerText = parseInt(countElem.innerText) + 1;
 
@@ -743,6 +743,46 @@
             activeMarkers[sosId] = newMarker;
             map.flyTo([lat, lng], 15);
         }
+
+        function injectIncidentToDashboard(incident) {
+            if (!incident) return;
+            console.log("Realtime incident ingested:", incident);
+            const lat = Number(incident.lat ?? incident.latitude);
+            const lng = Number(incident.lng ?? incident.longitude);
+            if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+
+            renderSOSCard({
+                ...incident,
+                id: incident.ticket_id || incident.incident_id || incident.id,
+                incident_id: incident.ticket_id || incident.incident_id || incident.id,
+                phone: incident.contact || incident.phone,
+                latitude: lat,
+                longitude: lng,
+                message: incident.details || incident.message || 'Emergency flood rescue request from citizen portal.',
+                severity: incident.emergency_type || incident.severity || 'PRIORITY 1'
+            });
+
+            if (typeof routeRescueUnitToVictim === 'function') {
+                routeRescueUnitToVictim(lat, lng);
+            }
+        }
+
+        try {
+            const sosBroadcast = new BroadcastChannel('suraksha_grid_realtime');
+            sosBroadcast.onmessage = (event) => {
+                if (event.data && event.data.type === 'NEW_INCIDENT') {
+                    injectIncidentToDashboard(event.data.payload);
+                }
+            };
+        } catch (error) {}
+
+        window.addEventListener('storage', (event) => {
+            if (event.key !== 'suraksha_last_sos' || !event.newValue) return;
+            try {
+                const data = JSON.parse(event.newValue);
+                injectIncidentToDashboard(data.payload);
+            } catch (error) {}
+        });
 
         // Live Geolocation Dispatch
         function dispatchLiveDeviceSOS() {
