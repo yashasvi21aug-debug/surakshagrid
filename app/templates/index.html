@@ -7,75 +7,73 @@
 {% endblock %}
 
 {% block content %}
-<div class="metrics-strip">
-  <div class="metric-card">
-    <span class="metric-label">BASIN PRECIPITATION</span>
-    <div class="metric-value text-slate-200">0.0 mm/h</div>
-  </div>
-  <div class="metric-card">
-    <span class="metric-label">HYDROLOGICAL RISK</span>
-    <div class="metric-value text-emerald-400">STABLE / MONITORED</div>
-  </div>
-  <div class="metric-card">
-    <span class="metric-label">ACTIVE INCIDENT QUEUE</span>
-    <div id="active-count" class="metric-value text-red-400">0 Active Tickets</div>
-  </div>
-  <div class="metric-card">
-    <span class="metric-label">PREDICTED SURGE RISE</span>
-    <div class="metric-value text-cyan-400">0.00 meters</div>
-  </div>
-</div>
-
-<div class="flex-1 grid grid-cols-12 gap-4 p-4">
-  <!-- Controls Panel -->
-  <aside class="col-span-12 lg:col-span-2 space-y-4">
-    <div class="glass-panel p-3 rounded space-y-2">
-      <button id="toggle-inundation" type="button" class="w-full py-2 px-3 bg-slate-800 hover:bg-slate-700 rounded text-left text-xs font-mono flex items-center justify-between transition-colors">
-        <span>Inundation Vector</span>
-        <span class="w-2 h-2 rounded-full bg-red-500"></span>
-      </button>
+<div class="dashboard-root">
+  <!-- High-Density Telemetry KPI Ribbon -->
+  <div class="telemetry-ribbon">
+    <div class="kpi-chip">
+      <span class="kpi-label">BASIN PRECIPITATION</span>
+      <div class="kpi-value text-[#f0f6fc]">0.0 <span class="text-[11px] text-[#8b949e] font-normal">mm/h</span></div>
     </div>
+    <div class="kpi-chip">
+      <span class="kpi-label">HYDROLOGICAL RISK</span>
+      <div class="kpi-value text-[#3fb950]">STABLE / MONITORED</div>
+    </div>
+    <div class="kpi-chip">
+      <span class="kpi-label">ACTIVE INCIDENT QUEUE</span>
+      <div id="active-count" class="kpi-value text-[#f85149]">0 Active Tickets</div>
+    </div>
+    <div class="kpi-chip">
+      <span class="kpi-label">ESTIMATED WATER RISE</span>
+      <div class="kpi-value text-[#58a6ff]">0.00 <span class="text-[11px] text-[#8b949e] font-normal">meters</span></div>
+    </div>
+  </div>
 
-    <div class="glass-panel p-3 rounded text-xs font-mono space-y-2">
-      <div class="text-emerald-400 font-bold flex items-center gap-1.5">
-        <i class="fa-solid fa-truck-medical text-xs"></i> UNIT #4 TELEMETRY
+  <!-- Workspace Split View -->
+  <div class="workspace-split">
+    <!-- Left Main Canvas: GIS Map (70%) -->
+    <div class="map-canvas-container">
+      <!-- Floating Layer Control Bar -->
+      <div class="floating-layer-bar">
+        <button id="toggle-inundation" type="button" class="tactical-btn">
+          <i class="fa-solid fa-water text-[10px] text-[#f85149]"></i>
+          <span>SAR Inundation Vector</span>
+          <span class="w-1.5 h-1.5 rounded-full bg-[#f85149]"></span>
+        </button>
+        <button id="toggle-routes" type="button" class="tactical-btn">
+          <i class="fa-solid fa-route text-[10px] text-[#3fb950]"></i>
+          <span>Safe Corridors</span>
+        </button>
+        <button id="toggle-gauges" type="button" class="tactical-btn">
+          <i class="fa-solid fa-gauge-high text-[10px] text-[#58a6ff]"></i>
+          <span>IoT Gauges</span>
+        </button>
       </div>
-      <div class="grid grid-cols-3 gap-1 text-center mt-2">
-        <div class="bg-slate-950 p-1.5 rounded">
-          <div class="text-[10px] text-slate-400">ETA</div>
-          <div id="unit-eta" class="font-bold text-white">--</div>
-        </div>
-        <div class="bg-slate-950 p-1.5 rounded">
-          <div class="text-[10px] text-slate-400">DIST</div>
-          <div id="unit-dist" class="font-bold text-white">--</div>
-        </div>
-        <div class="bg-slate-950 p-1.5 rounded">
-          <div class="text-[10px] text-slate-400">SPEED</div>
-          <div id="unit-speed" class="font-bold text-white">0 km/h</div>
+
+      <!-- Edge-to-Edge Map Viewport -->
+      <div id="map"></div>
+    </div>
+
+    <!-- Right Sidebar: Incident Queue & Unit Dispatch (30%) -->
+    <aside class="incident-sidebar">
+      <div class="sidebar-header">
+        <span class="flex items-center gap-1.5">
+          <i class="fa-solid fa-list-check text-[10px] text-[#58a6ff]"></i>
+          LIVE INCIDENT DISPATCH QUEUE
+        </span>
+        <span class="text-[10px] text-[#3fb950] font-normal flex items-center gap-1">
+          <span class="status-dot-live"></span> ACTIVE
+        </span>
+      </div>
+
+      <!-- Scrollable Dense Queue Feed -->
+      <div id="incident-queue" class="queue-feed">
+        <div id="queue-empty" class="text-[#8b949e] text-center py-12 font-mono text-xs border border-dashed border-[#30363d] rounded p-4">
+          <i class="fa-solid fa-shield-cat text-lg mb-2 text-[#30363d] block"></i>
+          No active emergency tickets in sector queue.
         </div>
       </div>
-    </div>
-  </aside>
-
-  <!-- GIS Map View -->
-  <section class="col-span-12 lg:col-span-7 map-container">
-    <div id="map"></div>
-  </section>
-
-  <!-- Incident Queue Side Panel -->
-  <aside class="col-span-12 lg:col-span-3 glass-panel rounded p-3 flex flex-col">
-    <div class="text-xs font-mono font-bold text-slate-400 mb-3 flex items-center justify-between border-b border-slate-800 pb-2">
-      <span>LIVE INCIDENT QUEUE</span>
-      <span class="text-emerald-400 text-[10px] flex items-center gap-1">
-        <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span> ONLINE
-      </span>
-    </div>
-    <div id="incident-queue" class="flex-1 overflow-y-auto space-y-2 pr-1 text-xs">
-      <div id="queue-empty" class="text-slate-500 text-center py-10 font-mono text-[11px]">
-        No active distress incidents in sector queue.
-      </div>
-    </div>
-  </aside>
+    </aside>
+  </div>
 </div>
 {% endblock %}
 

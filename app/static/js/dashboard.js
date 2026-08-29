@@ -1,5 +1,5 @@
 /**
- * SurakshaGrid EOC Incident Command & Digital Twin Dashboard Controller
+ * SurakshaGrid EOC Incident Command Console Controller
  */
 
 import { connectWebSocket, API_BASE } from './api.js';
@@ -10,12 +10,32 @@ document.addEventListener('DOMContentLoaded', () => {
   const mapEngine = new SurakshaMap('map', [28.6350, 77.4350], 13);
   let incidentCount = 0;
 
-  // Toggle SAR Inundation Overlay
+  // Live UTC & IST Clock Ticker
+  const updateClocks = () => {
+    const now = new Date();
+    const utcS = now.toISOString().substring(11, 19) + ' UTC';
+    const istS = now.toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour12: false }) + ' IST';
+    const utcEl = document.getElementById('utc-clock');
+    const istEl = document.getElementById('ist-clock');
+    if (utcEl) utcEl.innerText = utcS;
+    if (istEl) istEl.innerText = istS;
+  };
+  setInterval(updateClocks, 1000);
+  updateClocks();
+
+  // Invalidate map size on window resize
+  window.addEventListener('resize', () => {
+    if (mapEngine && mapEngine.map) {
+      mapEngine.map.invalidateSize();
+    }
+  });
+
+  // Toggle SAR Inundation Vector Overlay
   const toggleBtn = document.getElementById('toggle-inundation');
   if (toggleBtn) {
     toggleBtn.addEventListener('click', () => {
       const active = mapEngine.toggleInundationLayer();
-      showToast('SAR Processing', active ? 'Flood vector mask enabled' : 'Flood vector mask hidden', active ? 'info' : 'warning');
+      showToast('SAR Vector', active ? 'SAR Inundation vector layer enabled' : 'SAR Inundation vector layer hidden', active ? 'info' : 'warning');
     });
   }
 
@@ -26,7 +46,10 @@ document.addEventListener('DOMContentLoaded', () => {
       addIncidentToQueue(data);
     }
   }, (isOnline) => {
-    setBadgeStatus(streamBadge, isOnline, isOnline ? 'TELEMETRY STREAM ONLINE' : 'DISCONNECTED');
+    if (streamBadge) {
+      const textEl = document.getElementById('stream-status-text');
+      if (textEl) textEl.innerText = isOnline ? 'LIVE STREAM' : 'OFFLINE';
+    }
   });
 
   // Listen for Cross-Tab BroadcastChannel Events
@@ -63,15 +86,21 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!queue) return;
 
     const ticketId = data.ticket_id || `TICK-${Math.floor(1000 + Math.random() * 9000)}`;
+    const timeStr = new Date().toLocaleTimeString('en-IN', { hour12: false });
+    const priority = data.emergency_type || data.emergencyType || 'CRITICAL_TRAPPED';
+
     const card = document.createElement('div');
-    card.className = "p-2.5 rounded bg-slate-900 border border-red-500/60 font-mono text-[11px] cursor-pointer hover:bg-slate-800 transition-all";
+    card.className = "incident-card-tactical";
     card.innerHTML = `
-      <div class="flex justify-between font-bold text-red-400">
-        <span>${ticketId}</span>
-        <span class="text-[9px] bg-red-950 px-1 py-0.5 rounded border border-red-700">PRIORITY 1</span>
+      <div class="incident-card-header">
+        <span class="incident-ticket">${ticketId}</span>
+        <span class="incident-badge-priority">${priority}</span>
       </div>
-      <div class="text-slate-300 mt-1">${data.notes || data.details || 'Distress signal received'}</div>
-      <div class="text-slate-500 text-[10px] mt-1">${data.contact || data.phone || '+91-EMERGENCY'}</div>
+      <div class="incident-notes">${data.notes || data.details || 'Distress signal received'}</div>
+      <div class="incident-meta">
+        <span><i class="fa-solid fa-phone text-[9px] mr-1"></i>${data.contact || data.phone || '+91-EMERGENCY'}</span>
+        <span><i class="fa-clock text-[9px] mr-1"></i>${timeStr}</span>
+      </div>
     `;
     queue.prepend(card);
 
@@ -79,11 +108,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const lng = data.lng || data.longitude || 77.4446;
 
     const popupHtml = `
-      <div class="p-1 text-slate-900 font-sans text-xs">
-        <b>${ticketId}</b><br/>
-        <span>${data.contact || data.phone || ''}</span><br/>
-        <button id="dispatch-btn-${incidentCount}" class="mt-2 w-full px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded font-bold">
-          Dispatch Unit (Road Track)
+      <div style="padding: 2px;">
+        <b style="color: #f85149;">${ticketId}</b> (${priority})<br/>
+        <span style="color: #8b949e; font-size: 11px;">Contact: ${data.contact || data.phone || 'N/A'}</span><br/>
+        <button id="dispatch-btn-${incidentCount}" class="tactical-btn tactical-btn-primary" style="margin-top: 6px; width: 100%;">
+          <i class="fa-solid fa-truck-medical text-[10px]"></i> Dispatch NDRF Unit #4
         </button>
       </div>
     `;
@@ -95,9 +124,6 @@ document.addEventListener('DOMContentLoaded', () => {
       if (btn) {
         btn.addEventListener('click', () => {
           mapEngine.renderSafeCorridor([28.6410, 77.4280], [lat, lng]);
-          document.getElementById('unit-eta').innerText = "6 MIN";
-          document.getElementById('unit-dist').innerText = "3.4 KM";
-          document.getElementById('unit-speed').innerText = "38 KM/H";
           showToast('Unit Dispatch', `NDRF Unit #4 dispatched to ticket ${ticketId}`, 'success');
         });
       }

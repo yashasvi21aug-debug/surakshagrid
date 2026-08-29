@@ -1,16 +1,30 @@
 /**
- * SurakshaGrid Leaflet GIS & Map Engine Module
+ * SurakshaGrid Leaflet GIS & Tactical Map Engine Module
  */
 
 export class SurakshaMap {
   constructor(elementId, center = [28.6350, 77.4350], zoom = 13) {
     this.elementId = elementId;
-    this.map = L.map(elementId).setView(center, zoom);
+    this.map = L.map(elementId, {
+      zoomControl: false
+    }).setView(center, zoom);
 
+    // Add compact Leaflet zoom control in top-right
+    L.control.zoom({ position: 'topright' }).addTo(this.map);
+
+    // Carto Dark Matter Basemap Tiles
     L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
       maxZoom: 19,
-      attribution: '&copy; CartoDB & OpenStreetMap'
+      subdomains: 'abcd',
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
     }).addTo(this.map);
+
+    // Invalidate map size on load to ensure smooth rendering without tile seams
+    setTimeout(() => {
+      if (this.map) {
+        this.map.invalidateSize();
+      }
+    }, 200);
 
     this.markers = new Map();
     this.floodLayer = null;
@@ -21,9 +35,15 @@ export class SurakshaMap {
   }
 
   initVehicleMarker(center) {
-    this.vehicleMarker = L.marker([center[0] + 0.006, center[1] - 0.007])
+    this.vehicleMarker = L.circleMarker([center[0] + 0.006, center[1] - 0.007], {
+      color: '#388bfd',
+      fillColor: '#388bfd',
+      fillOpacity: 0.9,
+      radius: 7,
+      weight: 2
+    })
       .addTo(this.map)
-      .bindPopup('<b class="text-slate-900">NDRF Base Station Unit #4</b>');
+      .bindPopup('<b style="color: #58a6ff;">NDRF BASE UNIT #4</b><br/><span style="color: #8b949e; font-size: 11px;">Staging Post: Hindon Sector</span>');
   }
 
   initDefaultFloodPolygon() {
@@ -33,10 +53,10 @@ export class SurakshaMap {
       [28.6290, 77.4520],
       [28.6270, 77.4410]
     ], {
-      color: '#ef4444',
-      fillColor: '#dc2626',
-      fillOpacity: 0.35,
-      weight: 2,
+      color: '#f85149',
+      fillColor: '#f85149',
+      fillOpacity: 0.25,
+      weight: 1.5,
       dashArray: '4, 4'
     }).addTo(this.map);
   }
@@ -53,10 +73,11 @@ export class SurakshaMap {
 
   addIncidentMarker(id, lat, lng, popupContent) {
     const marker = L.circleMarker([lat, lng], {
-      color: '#ef4444',
-      fillColor: '#dc2626',
+      color: '#f85149',
+      fillColor: '#da3633',
       fillOpacity: 0.9,
-      radius: 8
+      radius: 8,
+      weight: 2
     }).addTo(this.map);
 
     if (popupContent) {
@@ -64,7 +85,7 @@ export class SurakshaMap {
     }
 
     this.markers.set(id, marker);
-    this.map.flyTo([lat, lng], 14);
+    this.map.flyTo([lat, lng], 14, { animate: true, duration: 0.8 });
     return marker;
   }
 
@@ -82,14 +103,14 @@ export class SurakshaMap {
     ];
 
     this.currentRoute = L.polyline(points, {
-      color: '#10b981',
-      weight: 6,
+      color: '#3fb950',
+      weight: 4,
       opacity: 0.95,
       lineCap: 'round',
-      dashArray: '8, 12'
+      dashArray: '6, 8'
     }).addTo(this.map);
 
-    this.map.fitBounds(this.currentRoute.getBounds(), { padding: [50, 50] });
+    this.map.fitBounds(this.currentRoute.getBounds(), { padding: [40, 40] });
     return this.currentRoute;
   }
 }
