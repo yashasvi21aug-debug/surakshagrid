@@ -915,7 +915,18 @@
                     try {
                         const data = JSON.parse(event.data);
                         if (data.type === 'HANDSHAKE_ACK') return;
-                        renderSOSCard(data.data || data);
+                        const incident = data.data || data;
+                        if (incident.lat != null || incident.latitude != null) {
+                            handleIncomingRealtimeIncident({
+                                ...incident,
+                                ticket_id: incident.ticket_id || incident.incident_id || incident.id,
+                                contact: incident.contact || incident.phone || incident.phone_number,
+                                emergency_type: incident.emergency_type,
+                                lat: incident.lat ?? incident.latitude,
+                                lng: incident.lng ?? incident.longitude,
+                                details: incident.details || incident.message || 'Emergency distress signal received.'
+                            });
+                        }
                     } catch (error) {
                         console.error("Invalid EOC telemetry payload:", error);
                     }
