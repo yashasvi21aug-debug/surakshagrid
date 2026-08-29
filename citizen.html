@@ -128,6 +128,7 @@
             const formError = document.getElementById('formError');
             let coordinates = null;
             let isFlushing = false;
+            let backendReachable = false;
 
             const readQueue = () => {
                 try { return JSON.parse(localStorage.getItem(QUEUE_KEY) || '[]'); }
@@ -140,6 +141,25 @@
                 networkBadge.className = offline
                     ? 'rounded-full border border-amber/50 bg-amber/10 px-3 py-1 text-[11px] font-bold tracking-wide text-amber'
                     : 'rounded-full border border-mint/40 bg-mint/10 px-3 py-1 text-[11px] font-bold tracking-wide text-mint';
+            };
+            const checkBackend = async () => {
+                if (!navigator.onLine) {
+                    backendReachable = false;
+                    setOfflineState(true);
+                    return false;
+                }
+                try {
+                    const response = await fetch(`${API_BASE}/`, { method: 'GET', cache: 'no-store' });
+                    backendReachable = response.ok;
+                } catch (error) {
+                    backendReachable = false;
+                }
+                setOfflineState(!backendReachable || readQueue().length > 0);
+                return backendReachable;
+            };
+            const warmupBackend = async () => {
+                await checkBackend();
+                if (backendReachable) await flushQueue();
             };
             const queuePayload = (payload) => {
                 const queue = readQueue();
@@ -154,10 +174,11 @@
                     body: JSON.stringify(payload)
                 });
                 if (!response.ok) throw new Error(`SOS request failed (${response.status})`);
+                backendReachable = true;
                 return response.json();
             };
             const flushQueue = async () => {
-                if (isFlushing || !navigator.onLine) return;
+                if (isFlushing || !navigator.onLine || !backendReachable) return;
                 const queue = readQueue();
                 if (!queue.length) { setOfflineState(false); return; }
                 isFlushing = true;
@@ -168,7 +189,7 @@
                 }
                 writeQueue(remaining);
                 isFlushing = false;
-                setOfflineState(remaining.length > 0);
+                setOfflineState(remaining.length > 0 || !backendReachable);
             };
 
             document.querySelectorAll('input[name="emergencyType"]').forEach((input) => {
@@ -217,7 +238,7 @@
                 submitButton.disabled = true;
                 submitButton.textContent = 'TRANSMITTING...';
                 try {
-                    if (!navigator.onLine) throw new Error('offline');
+                    if (!navigator.onLine || !(await checkBackend())) throw new Error('backend unavailable');
                     await sendPayload(payload);
                     setOfflineState(false);
                     submitButton.textContent = 'SOS RECEIVED - HELP IS COMING';
@@ -229,9 +250,12 @@
                 }
             });
 
-            window.addEventListener('online', flushQueue);
-            setOfflineState(!navigator.onLine || readQueue().length > 0);
-            flushQueue();
+            window.addEventListener('online', warmupBackend);
+            window.addEventListener('offline', () => {
+                backendReachable = false;
+                setOfflineState(true);
+            });
+            warmupBackend();
         })();
     </script>
 </body>
