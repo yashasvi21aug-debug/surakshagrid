@@ -3,6 +3,258 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#081014">
+    <title>SurakshaGrid Citizen SOS</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        night: '#081014',
+                        panel: '#101c21',
+                        edge: '#263940',
+                        emergency: '#ff5b5b',
+                        online: '#39d398',
+                        warning: '#f0b44d'
+                    },
+                    fontFamily: {
+                        sans: ['DM Sans', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+                        display: ['Barlow Condensed', 'Arial Narrow', 'sans-serif']
+                    }
+                }
+            }
+        };
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root { color-scheme: dark; }
+        * { box-sizing: border-box; }
+        html, body { min-height: 100%; margin: 0; }
+        body {
+            background: #081014;
+            color: #eef5f5;
+            font-family: 'DM Sans', sans-serif;
+        }
+        h1, h2, .display { font-family: 'Barlow Condensed', 'Arial Narrow', sans-serif; }
+        .grid-texture {
+            background-image: linear-gradient(rgba(128, 180, 175, .045) 1px, transparent 1px), linear-gradient(90deg, rgba(128, 180, 175, .045) 1px, transparent 1px);
+            background-size: 28px 28px;
+        }
+        .triage-card { transition: border-color .16s ease, background-color .16s ease, transform .16s ease; }
+        .triage-card:active { transform: scale(.985); }
+        .triage-card.selected { border-color: #ff5b5b; background: rgba(255, 91, 91, .12); }
+        .triage-card.selected .triage-number { background: #ff5b5b; color: #fff; }
+        .focus-ring:focus { outline: 2px solid #ff5b5b; outline-offset: 2px; }
+    </style>
+</head>
+<body class="grid-texture">
+    <div class="mx-auto flex min-h-screen w-full max-w-2xl flex-col px-4 pb-6 pt-4 sm:px-8 sm:pt-6">
+        <header class="flex shrink-0 items-center justify-between border-b border-edge pb-4" aria-label="Portal header">
+            <div class="flex items-center gap-3">
+                <div class="flex h-10 w-10 items-center justify-center border border-emergency/60 bg-emergency/10 text-sm font-bold tracking-wider text-emergency">SOS</div>
+                <div>
+                    <p class="text-xs font-bold tracking-[.22em] text-slate-400">SURAKSHAGRID</p>
+                    <p class="text-sm text-slate-200">Citizen emergency portal</p>
+                </div>
+            </div>
+            <div class="flex items-center gap-2 rounded-full border border-online/40 bg-online/10 px-3 py-1.5 text-xs font-bold text-online" aria-live="polite">
+                <span class="h-2 w-2 rounded-full bg-online"></span>
+                <span id="channel-status">ONLINE</span>
+            </div>
+        </header>
+
+        <main class="flex flex-1 flex-col">
+            <section class="pt-8" aria-labelledby="portal-title">
+                <p class="text-xs font-bold uppercase tracking-[.2em] text-emergency">Emergency assistance</p>
+                <h1 id="portal-title" class="mt-2 text-5xl font-bold uppercase leading-[.88] tracking-wide text-white sm:text-6xl">Tell responders<br>what you need.</h1>
+                <p class="mt-4 max-w-lg text-sm leading-6 text-slate-400">Select the situation that best matches your emergency. Your location will be attached to the request.</p>
+            </section>
+
+            <form id="sos-form" class="mt-8 flex flex-1 flex-col" novalidate>
+                <fieldset>
+                    <legend class="mb-3 text-xs font-bold uppercase tracking-[.18em] text-slate-400">Emergency type</legend>
+                    <div class="grid gap-3">
+                        <label class="triage-card focus-ring block cursor-pointer border border-edge bg-panel p-4">
+                            <input class="sr-only" type="radio" name="emergencyType" value="CRITICAL_TRAPPED" required>
+                            <span class="flex items-center gap-4">
+                                <span class="triage-number flex h-12 w-12 shrink-0 items-center justify-center bg-emergency/15 text-lg font-bold text-emergency">01</span>
+                                <span><strong class="block text-base text-white">Roof / Upper level</strong><span class="mt-1 block text-xs text-slate-400">CRITICAL_TRAPPED</span></span>
+                            </span>
+                        </label>
+                        <label class="triage-card focus-ring block cursor-pointer border border-edge bg-panel p-4">
+                            <input class="sr-only" type="radio" name="emergencyType" value="MEDICAL_EVAC" required>
+                            <span class="flex items-center gap-4">
+                                <span class="triage-number flex h-12 w-12 shrink-0 items-center justify-center bg-emergency/15 text-lg font-bold text-emergency">02</span>
+                                <span><strong class="block text-base text-white">Injured / Elderly / Infant</strong><span class="mt-1 block text-xs text-slate-400">MEDICAL_EVAC</span></span>
+                            </span>
+                        </label>
+                        <label class="triage-card focus-ring block cursor-pointer border border-edge bg-panel p-4">
+                            <input class="sr-only" type="radio" name="emergencyType" value="FOOD_WATER" required>
+                            <span class="flex items-center gap-4">
+                                <span class="triage-number flex h-12 w-12 shrink-0 items-center justify-center bg-emergency/15 text-lg font-bold text-emergency">03</span>
+                                <span><strong class="block text-base text-white">Stranded / Need Supplies</strong><span class="mt-1 block text-xs text-slate-400">FOOD_WATER</span></span>
+                            </span>
+                        </label>
+                    </div>
+                </fieldset>
+
+                <div class="mt-6 grid gap-4 sm:grid-cols-2">
+                    <label class="block text-xs font-bold uppercase tracking-[.15em] text-slate-400" for="contact-input">Contact number
+                        <input id="contact-input" name="phone" type="tel" inputmode="tel" autocomplete="tel" value="+919451195342" required minlength="8" maxlength="32" class="focus-ring mt-2 block w-full border border-edge bg-panel px-4 py-3.5 text-base text-white placeholder:text-slate-600" placeholder="Phone number">
+                    </label>
+                    <label class="block text-xs font-bold uppercase tracking-[.15em] text-slate-400" for="notes-input">Headcount / notes
+                        <input id="notes-input" name="notes" type="text" maxlength="240" class="focus-ring mt-2 block w-full border border-edge bg-panel px-4 py-3.5 text-base text-white placeholder:text-slate-600" placeholder="Example: 3 people, water rising">
+                    </label>
+                </div>
+
+                <div class="mt-5 flex items-center gap-2 text-sm" aria-live="polite">
+                    <span id="location-dot" class="h-2.5 w-2.5 rounded-full bg-warning"></span>
+                    <span id="location-status" class="text-slate-400">Acquiring GPS location...</span>
+                </div>
+                <p id="form-error" class="mt-3 hidden text-sm text-emergency" role="alert"></p>
+                <button id="transmit-button" type="submit" class="focus-ring mt-6 w-full bg-emergency px-5 py-4 text-sm font-bold tracking-[.14em] text-white shadow-[0_10px_30px_rgba(255,91,91,.2)] transition hover:bg-red-400 disabled:cursor-not-allowed disabled:opacity-60">TRANSMIT SOS</button>
+            </form>
+        </main>
+    </div>
+
+    <div id="success-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/75 p-4" role="dialog" aria-modal="true" aria-labelledby="success-title">
+        <div class="w-full max-w-sm border border-online/50 bg-panel p-6 text-center shadow-2xl">
+            <div class="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-online/15 text-2xl text-online">OK</div>
+            <h2 id="success-title" class="mt-5 text-3xl font-bold uppercase tracking-wide text-white">SOS transmitted</h2>
+            <p class="mt-2 text-sm text-slate-400">NDRF unit dispatched. Keep your phone available.</p>
+            <div class="mt-5 border border-edge bg-night px-4 py-3">
+                <p class="text-[11px] font-bold uppercase tracking-[.18em] text-slate-500">Ticket ID</p>
+                <p id="ticket-id" class="mt-1 font-mono text-xl font-bold text-online">TICK-0000</p>
+            </div>
+            <button id="return-button" type="button" class="focus-ring mt-5 w-full border border-edge px-4 py-3 text-sm font-bold uppercase tracking-wider text-slate-200 hover:border-online hover:text-online">Return to Portal</button>
+        </div>
+    </div>
+
+    <script>
+        const BACKEND_DOMAIN = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+            ? window.location.host
+            : 'surakshagrid-app.onrender.com';
+        const API_BASE = (window.location.protocol === 'https:' ? 'https://' : 'http://') + BACKEND_DOMAIN;
+
+        (() => {
+            const form = document.getElementById('sos-form');
+            const transmitButton = document.getElementById('transmit-button');
+            const formError = document.getElementById('form-error');
+            const locationStatus = document.getElementById('location-status');
+            const locationDot = document.getElementById('location-dot');
+            const successModal = document.getElementById('success-modal');
+            const ticketId = document.getElementById('ticket-id');
+            let coordinates = null;
+
+            const setLocation = (lat, lng, accuracy = null) => {
+                coordinates = { lat, lng, accuracy };
+                locationDot.className = 'h-2.5 w-2.5 rounded-full bg-online';
+                locationStatus.className = 'text-online';
+                locationStatus.textContent = accuracy ? `GPS locked - accuracy ${Math.round(accuracy)}m` : 'GPS locked';
+            };
+
+            const showSuccessModal = (id) => {
+                ticketId.textContent = id;
+                successModal.classList.remove('hidden');
+                successModal.classList.add('flex');
+                document.getElementById('return-button').focus();
+            };
+
+            const acquireLocation = () => {
+                if (!navigator.geolocation) {
+                    locationDot.className = 'h-2.5 w-2.5 rounded-full bg-warning';
+                    locationStatus.textContent = 'GPS unavailable - using station fallback';
+                    return Promise.resolve({ lat: 28.6322, lng: 77.4446 });
+                }
+                return new Promise((resolve) => {
+                    navigator.geolocation.getCurrentPosition(
+                        (position) => {
+                            setLocation(position.coords.latitude, position.coords.longitude, position.coords.accuracy);
+                            resolve({ lat: position.coords.latitude, lng: position.coords.longitude });
+                        },
+                        () => {
+                            locationDot.className = 'h-2.5 w-2.5 rounded-full bg-warning';
+                            locationStatus.textContent = 'GPS unavailable - using station fallback';
+                            resolve({ lat: 28.6322, lng: 77.4446 });
+                        },
+                        { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
+                    );
+                });
+            };
+
+            document.querySelectorAll('input[name="emergencyType"]').forEach((input) => {
+                input.addEventListener('change', () => {
+                    document.querySelectorAll('.triage-card').forEach((card) => card.classList.remove('selected'));
+                    input.closest('.triage-card').classList.add('selected');
+                });
+            });
+
+            form.addEventListener('submit', async (event) => {
+                event.preventDefault();
+                formError.classList.add('hidden');
+                if (!form.checkValidity()) {
+                    form.reportValidity();
+                    return;
+                }
+
+                const emergencyType = new FormData(form).get('emergencyType');
+                const phone = document.getElementById('contact-input').value.trim();
+                const notes = document.getElementById('notes-input').value.trim();
+                transmitButton.disabled = true;
+                transmitButton.textContent = 'TRANSMITTING...';
+
+                const gps = coordinates || await acquireLocation();
+                const payload = {
+                    phone,
+                    emergencyType,
+                    lat: gps.lat,
+                    lng: gps.lng,
+                    victim_name: 'Citizen SOS',
+                    contact_number: phone,
+                    latitude: gps.lat,
+                    longitude: gps.lng,
+                    details: notes || 'Emergency flood rescue request from mobile portal.'
+                };
+
+                try {
+                    const response = await fetch(`${API_BASE}/api/v1/sos/`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                    if (!response.ok) throw new Error(`SOS request failed (${response.status})`);
+                    const result = await response.json();
+                    const generatedId = result.id || result.incident_id || `TICK-${Math.floor(1000 + Math.random() * 9000)}`;
+                    transmitButton.textContent = 'SOS TRANSMITTED - NDRF UNIT DISPATCHED';
+                    showSuccessModal(generatedId);
+                } catch (error) {
+                    console.error('SOS dispatch failed:', error);
+                    formError.textContent = 'Unable to reach the emergency service. Please try again.';
+                    formError.classList.remove('hidden');
+                    transmitButton.disabled = false;
+                    transmitButton.textContent = 'TRANSMIT SOS';
+                }
+            });
+
+            document.getElementById('return-button').addEventListener('click', () => {
+                successModal.classList.add('hidden');
+                successModal.classList.remove('flex');
+                transmitButton.disabled = false;
+                transmitButton.textContent = 'TRANSMIT SOS';
+            });
+
+            acquireLocation();
+        })();
+    </script>
+</body>
+</html>
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta name="theme-color" content="#090d12">
     <title>SurakshaGrid Citizen SOS</title>
     <script src="https://cdn.tailwindcss.com"></script>
