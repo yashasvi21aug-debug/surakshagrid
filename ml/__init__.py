@@ -1,1 +1,2 @@
-__all__ = ["train_model", "predictor"]
+__all__ = ["train_and_save", "predictor"]
+

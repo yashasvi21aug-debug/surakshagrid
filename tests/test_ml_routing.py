@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.services.routing_service import RoutingService
+from app.services.routing import RoutingService
 
 
 class StubPredictor:

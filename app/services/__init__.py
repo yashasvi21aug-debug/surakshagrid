@@ -1,3 +1,4 @@
-from app.services.routing_service import RoutingService
+from app.services.routing import FloodAvoidanceRoutingService, RoutingError, RoutingService
 
-__all__ = ["RoutingService"]
+__all__ = ["RoutingService", "RoutingError", "FloodAvoidanceRoutingService"]
+

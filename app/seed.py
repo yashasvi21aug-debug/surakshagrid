@@ -21,6 +21,35 @@ from app.models.gis_models import (
     RescueUnit,
     RescueUnitStatus,
 )
+from app.models.spatial import FloodZone, Shelter
+
+SHELTERS = [
+    {"name": "Hindon High-Ground Relief Shelter", "lat": 28.6812, "lng": 77.3764, "capacity": 450},
+    {"name": "Sahibabad Civil Defence Centre", "lat": 28.6765, "lng": 77.3516, "capacity": 300},
+    {"name": "NCR East Evacuation School", "lat": 28.7148, "lng": 77.3182, "capacity": 600},
+]
+
+FLOOD_ZONES = [
+    {
+        "zone_name": "Hindon Basin North Lowland",
+        "polygon": "POLYGON((77.3380 28.6620,77.3620 28.6620,77.3620 28.6850,77.3380 28.6850,77.3380 28.6620))",
+        "water_depth_m": 1.45,
+        "risk_level": "CRITICAL",
+    },
+    {
+        "zone_name": "Hindon Basin South Floodplain",
+        "polygon": "POLYGON((77.3650 28.6260,77.3890 28.6260,77.3890 28.6500,77.3650 28.6500,77.3650 28.6260))",
+        "water_depth_m": 0.85,
+        "risk_level": "HIGH",
+    },
+    {
+        "zone_name": "Hindon Canal East Perimeter",
+        "polygon": "POLYGON((77.3970 28.6960,77.4210 28.6960,77.4210 28.7180,77.3970 28.7180,77.3970 28.6960))",
+        "water_depth_m": 0.42,
+        "risk_level": "HIGH",
+    },
+]
+
 
 
 GAUGES = [
@@ -247,11 +276,43 @@ async def seed_sos_records(session: AsyncSession) -> None:
         await session.execute(stmt)
 
 
+async def seed_shelters(session: AsyncSession) -> None:
+    existing = set((await session.execute(select(Shelter.name))).scalars().all())
+    records = [
+        Shelter(
+            name=item["name"],
+            geom=point_wkt(item["lat"], item["lng"]),
+            capacity=item["capacity"],
+            is_active=True,
+        )
+        for item in SHELTERS
+        if item["name"] not in existing
+    ]
+    session.add_all(records)
+
+
+async def seed_flood_zones(session: AsyncSession) -> None:
+    existing = set((await session.execute(select(FloodZone.zone_name))).scalars().all())
+    records = [
+        FloodZone(
+            zone_name=item["zone_name"],
+            geom=polygon_wkt(item["polygon"]),
+            water_depth_m=item["water_depth_m"],
+            risk_level=item["risk_level"],
+        )
+        for item in FLOOD_ZONES
+        if item["zone_name"] not in existing
+    ]
+    session.add_all(records)
+
+
 async def clear_demo_data(session: AsyncSession) -> None:
     await session.execute(CitizenSOS.__table__.delete())
     await session.execute(InundationZone.__table__.delete())
     await session.execute(IoTWaterGauge.__table__.delete())
     await session.execute(RescueUnit.__table__.delete())
+    await session.execute(Shelter.__table__.delete())
+    await session.execute(FloodZone.__table__.delete())
 
 
 async def seed_all(clear_existing: bool = True) -> None:
@@ -262,6 +323,8 @@ async def seed_all(clear_existing: bool = True) -> None:
         await seed_inundation_zones(session)
         await seed_rescue_units(session)
         await seed_sos_records(session)
+        await seed_shelters(session)
+        await seed_flood_zones(session)
         await session.commit()
 
 
@@ -276,3 +339,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

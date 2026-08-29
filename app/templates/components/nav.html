@@ -1,0 +1,28 @@
+<header class="bg-slate-900/80 backdrop-blur border-b border-slate-800 p-4 flex justify-between items-center z-30 sticky top-0">
+  <div class="flex items-center space-x-3">
+    <a href="/" class="flex items-center space-x-3 group">
+      <div class="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center font-bold text-white shadow-lg shadow-blue-500/20 group-hover:scale-105 transition-transform">
+        <i class="fa-solid fa-shield-halved text-sm"></i>
+      </div>
+      <div>
+        <h1 class="text-sm font-bold tracking-wider flex items-center gap-2">
+          SURAKSHAGRID
+          <span class="text-[10px] bg-blue-900/50 text-blue-400 px-2 py-0.5 rounded border border-blue-700 font-mono">NDRF INCIDENT COMMAND</span>
+        </h1>
+      </div>
+    </a>
+  </div>
+
+  <nav class="hidden md:flex items-center space-x-6 text-xs font-mono">
+    <a href="/" class="hover:text-blue-400 transition-colors">COMMAND PORTAL</a>
+    <a href="/dashboard" class="hover:text-blue-400 transition-colors">DIGITAL TWIN</a>
+    <a href="/citizen" class="hover:text-red-400 transition-colors text-red-400/90 font-bold">CITIZEN SOS</a>
+    <a href="/driver" class="hover:text-emerald-400 transition-colors">FIELD UNIT</a>
+  </nav>
+
+  <div class="flex items-center space-x-3">
+    <span id="stream-badge" class="px-2.5 py-1 bg-emerald-950/80 border border-emerald-500/40 text-emerald-400 rounded-full text-xs font-mono flex items-center gap-1.5">
+      <span class="status-dot pulse bg-emerald-500"></span> TELEMETRY STREAM ONLINE
+    </span>
+  </div>
+</header>

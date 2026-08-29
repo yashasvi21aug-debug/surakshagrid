@@ -178,3 +178,90 @@ def result_to_geojson(result: SARProcessingResult) -> dict[str, Any]:
         "threshold_db": -14.0,
     }
     return geojson
+
+
+def otsu_threshold(values: np.ndarray) -> float:
+    """Calculate Otsu's threshold for automatic water backscatter segmentation."""
+    values = values[np.isfinite(values)]
+    if values.size == 0:
+        return 0.0
+    hist, bin_edges = np.histogram(values, bins=256, range=(values.min(), values.max() or 1.0))
+    hist = hist.astype(float)
+    total = hist.sum()
+    if total == 0:
+        return 0.0
+
+    sum_bg = 0.0
+    w_bg = 0.0
+    sum_total = np.dot(np.arange(len(hist)), hist)
+    max_variance = 0.0
+    threshold = 0
+
+    for t in range(len(hist)):
+        w_bg += hist[t]
+        if w_bg == 0:
+            continue
+        w_fg = total - w_bg
+        if w_fg == 0:
+            break
+        sum_bg += t * hist[t]
+        mean_bg = sum_bg / w_bg
+        mean_fg = (sum_total - sum_bg) / w_fg
+        variance_between = w_bg * w_fg * (mean_bg - mean_fg) ** 2
+        if variance_between > max_variance:
+            max_variance = variance_between
+            threshold = t
+
+    return float(bin_edges[threshold])
+
+
+async def ingest_flood_polygons_to_db(gdf: gpd.GeoDataFrame) -> int:
+    """Persist extracted SAR inundation polygons to PostgreSQL/PostGIS database."""
+    if gdf.empty:
+        return 0
+
+    from app.database import AsyncSessionLocal
+    from app.models.gis_models import InundationZone
+
+    async with AsyncSessionLocal() as session:
+        count = 0
+        for _, row in gdf.iterrows():
+            polygon = row.geometry
+            if polygon is None or polygon.is_empty:
+                continue
+
+            zone = InundationZone(
+                zone_name=row.get("zone_name", "SAR_Inundation"),
+                polygon=polygon.wkt,
+                risk_score=float(row.get("risk_score", 0.9)),
+                estimated_water_rise=float(row.get("estimated_water_rise", 1.5)),
+                predicted_horizon_hours=int(row.get("predicted_horizon_hours", 6)),
+            )
+            session.add(zone)
+            count += 1
+
+        await session.commit()
+
+    return count
+
+
+def main() -> None:
+    """CLI runner to process SAR GeoTIFF and ingest into PostGIS."""
+    import argparse
+    import asyncio
+
+    parser = argparse.ArgumentParser(description="Process SAR flood inundation raster into PostGIS polygons")
+    parser.add_argument("--input", required=True, help="Path to the SAR GeoTIFF input")
+    parser.add_argument("--threshold-db", type=float, default=-14.0, help="Water segmentation threshold in dB")
+    args = parser.parse_args()
+
+    result = process_sar_tif(args.input, threshold_db=args.threshold_db)
+    print(f"Extracted {len(result.polygons)} polygon(s). Total water area: {result.total_surface_water_area_sq_km} sq km")
+
+    count = asyncio.run(ingest_flood_polygons_to_db(result.polygons))
+    print(f"Persisted {count} inundation polygons into PostGIS.")
+
+
+if __name__ == "__main__":
+    main()
+

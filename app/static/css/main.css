@@ -1,0 +1,100 @@
+/* SurakshaGrid Global Design Tokens & Theme Stylesheet */
+
+:root {
+  color-scheme: dark;
+  --bg-dark: #081014;
+  --bg-slate: #0f172a;
+  --panel-bg: #101c21;
+  --border-line: #2a4148;
+  --border-subtle: rgba(255, 255, 255, 0.08);
+  --text-main: #f1f7f6;
+  --text-muted: #91a6a8;
+  --brand-red: #ff5b5b;
+  --brand-green: #39d398;
+  --brand-amber: #f0b44d;
+  --brand-blue: #3b82f6;
+  --brand-cyan: #06b6d4;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  min-height: 100vh;
+  margin: 0;
+  padding: 0;
+  background-color: var(--bg-dark);
+  color: var(--text-main);
+  font-family: "Trebuchet MS", "Segoe UI", system-ui, -apple-system, sans-serif;
+  line-height: 1.5;
+}
+
+body {
+  background-image: 
+    linear-gradient(rgba(80, 130, 130, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(80, 130, 130, 0.045) 1px, transparent 1px);
+  background-size: 30px 30px;
+}
+
+/* Glassmorphism & Card Containers */
+.glass-panel {
+  background: rgba(16, 28, 33, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--border-line);
+}
+
+.glass-panel-subtle {
+  background: rgba(15, 23, 42, 0.6);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* Status Badges */
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid rgba(57, 211, 152, 0.45);
+  border-radius: 999px;
+  background: rgba(57, 211, 152, 0.1);
+  padding: 6px 12px;
+  color: var(--brand-green);
+  font-family: monospace;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: var(--brand-green);
+}
+
+.status-dot.pulse {
+  animation: status-pulse 2s infinite ease-in-out;
+}
+
+@keyframes status-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(1.2); }
+}
+
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.5);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-line);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}

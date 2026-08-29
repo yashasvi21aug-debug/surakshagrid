@@ -1,8 +1,12 @@
 import logging
 from datetime import datetime, timezone
+from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
 
 from app.database import init_db
 from app.routes.alerts import router as alerts_router
@@ -15,6 +19,11 @@ from app.routes.ws import router as ws_router
 from app.services.weather import fetch_live_weather
 
 logger = logging.getLogger(__name__)
+
+APP_DIR = Path(__file__).resolve().parent
+TEMPLATES_DIR = APP_DIR / "templates"
+STATIC_DIR = APP_DIR / "static"
+LEGACY_FRONTEND_DIR = APP_DIR.parent / "frontend"
 
 # 1. Instantiate FastAPI First
 app = FastAPI(
@@ -31,7 +40,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 2. Register Routers AFTER app is created
+# 2. Configure Templates & Static Assets
+if STATIC_DIR.is_dir():
+    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
+templates = Jinja2Templates(directory=str(TEMPLATES_DIR)) if TEMPLATES_DIR.is_dir() else None
+
+# 3. Register Routers AFTER app is created
 app.include_router(ml_router)
 app.include_router(alerts_router)
 app.include_router(auth_router)
@@ -40,7 +55,8 @@ app.include_router(sos_router)
 app.include_router(spatial_router)
 app.include_router(ws_router)
 
-# 3. Endpoints
+
+# 4. Endpoints
 @app.get("/api/v1/telemetry/live-weather")
 async def get_live_telemetry(lat: float = 28.6321, lng: float = 77.4446):
     return await fetch_live_weather(lat, lng)
@@ -73,16 +89,21 @@ async def startup_event() -> None:
 async def health_check() -> dict[str, str]:
     return {"status": "ok", "service": "SurakshaGrid"}
 
+
 @app.get("/api/v1/sos/active-feed")
 async def get_active_sos_feed():
     """Returns active emergency alerts from the live database."""
-    # If using your SQLAlchemy DB session:
-    # return db.query(SOSModel).filter(SOSModel.status != "RESOLVED").all()
     return []
 
 
+# 5. Page Template Routes
 @app.get("/")
-async def root() -> dict[str, object]:
+async def root(request: Request):
+    if templates:
+        return templates.TemplateResponse(request=request, name="index.html")
+    index_file = LEGACY_FRONTEND_DIR / "index.html"
+    if index_file.is_file():
+        return FileResponse(index_file)
     return {
         "service": "SurakshaGrid Incident Command & Digital Twin API",
         "status": "operational",
@@ -91,3 +112,34 @@ async def root() -> dict[str, object]:
         "websocket_endpoints": ["/ws/eoc-feed", "/ws/vehicle-telemetry"],
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
+
+
+@app.get("/citizen")
+async def citizen_page(request: Request):
+    if templates:
+        return templates.TemplateResponse(request=request, name="citizen.html")
+    page = LEGACY_FRONTEND_DIR / "citizen.html"
+    if page.is_file():
+        return FileResponse(page)
+    return {"error": "citizen.html not found"}
+
+
+@app.get("/driver")
+async def driver_page(request: Request):
+    if templates:
+        return templates.TemplateResponse(request=request, name="driver.html")
+    page = LEGACY_FRONTEND_DIR / "driver.html"
+    if page.is_file():
+        return FileResponse(page)
+    return {"error": "driver.html not found"}
+
+
+@app.get("/dashboard")
+async def dashboard_page(request: Request):
+    if templates:
+        return templates.TemplateResponse(request=request, name="dashboard.html")
+    page = LEGACY_FRONTEND_DIR / "dashboard.html"
+    if page.is_file():
+        return FileResponse(page)
+    return {"error": "dashboard.html not found"}
+
