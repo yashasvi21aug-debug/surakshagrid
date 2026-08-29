@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone
 from pathlib import Path
 import numpy as np
 import pandas as pd
@@ -54,7 +55,7 @@ def generate_synthetic_hydrology_dataset(num_samples: int = 2500, seed: int = 42
     return df
 
 
-def train_and_serialize_models() -> dict[str, str]:
+def train_and_serialize_models(save_versioned_backup: bool = True) -> dict[str, str]:
     """Train XGBClassifier and XGBRegressor on hydrological dataset and save JSON model weights."""
     MODEL_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -87,9 +88,19 @@ def train_and_serialize_models() -> dict[str, str]:
     reg.save_model(str(DEPTH_MODEL_PATH))
     logger.info("Saved XGBRegressor water rise depth model to %s", DEPTH_MODEL_PATH)
 
+    version_timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    backup_inundation = MODEL_DIR / f"inundation_xgb_v{version_timestamp}.json"
+    backup_depth = MODEL_DIR / f"depth_xgb_v{version_timestamp}.json"
+
+    if save_versioned_backup:
+        clf.save_model(str(backup_inundation))
+        reg.save_model(str(backup_depth))
+        logger.info("Saved versioned model backup snapshots: %s, %s", backup_inundation.name, backup_depth.name)
+
     return {
         "inundation_model": str(INUNDATION_MODEL_PATH),
         "depth_model": str(DEPTH_MODEL_PATH),
+        "version_snapshot": version_timestamp,
     }
 
 

@@ -21,16 +21,24 @@ from app.database import init_db
 from app.logging_config import setup_structured_logging
 from app.middleware.metrics import PrometheusMetricsMiddleware, get_metrics_response
 from app.middleware.security import SecurityHeadersMiddleware
+
 from app.routes.alerts import router as alerts_router
+from app.routes.archive import router as archive_router
 from app.routes.auth import router as auth_router
 from app.routes.dispatch import router as dispatch_router
+from app.routes.fleet import router as fleet_router
 from app.routes.health import router as health_router
+from app.routes.hydrology import router as hydrology_router
 from app.routes.ml import router as ml_router
+from app.routes.recon import router as recon_router
+from app.routes.reports import router as reports_router
 from app.routes.routes import router as routes_router
+from app.routes.shelters import router as shelters_router
 from app.routes.sos import router as sos_router
 from app.routes.spatial import router as spatial_router
 from app.routes.telephony import router as telephony_router
 from app.routes.ws import router as ws_router
+
 from app.services.sentinel_hub import background_sentinel_ingestion_loop
 from app.services.weather import background_ingestion_loop, fetch_live_weather
 
@@ -170,12 +178,18 @@ async def rfc7807_generic_exception_handler(request: Request, exc: Exception) ->
 
 
 # 4. Register Routers
-app.include_router(health_router)
-app.include_router(dispatch_router)
-app.include_router(ml_router)
 app.include_router(alerts_router)
+app.include_router(archive_router)
 app.include_router(auth_router)
+app.include_router(dispatch_router)
+app.include_router(fleet_router)
+app.include_router(health_router)
+app.include_router(hydrology_router)
+app.include_router(ml_router)
+app.include_router(recon_router)
+app.include_router(reports_router)
 app.include_router(routes_router)
+app.include_router(shelters_router)
 app.include_router(sos_router)
 app.include_router(spatial_router)
 app.include_router(telephony_router)

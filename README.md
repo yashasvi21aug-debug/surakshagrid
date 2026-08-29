@@ -1,11 +1,11 @@
-# 🛡️ SurakshaGrid (PRD v1.0.0)
+# SurakshaGrid (PRD v1.0.0)
 > **AI-Powered Flood Disaster Incident Command, Safe Corridor Routing, & Digital Twin Platform**
 
 SurakshaGrid is a production-grade, real-time disaster management and emergency response system tailored for extreme urban flood events along high-risk river basin sub-catchments (such as the Hindon and Yamuna river basins). The platform bridges citizen distress telemetry, IoT river gauge metrics, Sentinel-1 Synthetic Aperture Radar (SAR) flood extent extraction, and dynamic evasive routing for field rescue operators (NDRF).
 
 ---
 
-## 🏗️ System Architecture & Data Flow
+## System Architecture & Data Flow
 
 ```text
 [ Citizen PWA ]          [ IoT River Gauges ]          [ Copernicus / AWS ]
@@ -15,8 +15,8 @@ SurakshaGrid is a production-grade, real-time disaster management and emergency 
 ┌────────────────────────────────────────────────────────────────────────┐
 │                   SurakshaGrid FastAPI Engine (v1.0.0)                 │
 │  - Security & OWASP Headers       - Prometheus Telemetry Metrics       │
-│  - SlowAPI Rate Limiter          - Hydrology XGBoost Model            │
-│  - PostGIS Spatial Indexing      - OSRM Safe Corridor Engine          │
+│  - SlowAPI Rate Limiter          - Hydrology XGBoost Model             │
+│  - PostGIS Spatial Indexing      - OSRM Safe Corridor Engine           │
 └──────────────────────────────────┬─────────────────────────────────────┘
                                    │ Real-Time WebSockets (/ws) <200ms
                                    ▼
@@ -29,7 +29,7 @@ SurakshaGrid is a production-grade, real-time disaster management and emergency 
 
 ---
 
-## 🛠️ Tech Stack Breakdown
+## Tech Stack Breakdown
 
 - **Backend Framework:** FastAPI 0.109+, Python 3.11/3.14, AsyncIO, Uvicorn, SlowAPI rate limiting.
 - **Database & Spatial Engine:** PostgreSQL 16 + PostGIS 3.4 (GeoAlchemy2, SQLAlchemy 2.0 Async, GIST spatial indexing).
@@ -40,7 +40,7 @@ SurakshaGrid is a production-grade, real-time disaster management and emergency 
 
 ---
 
-## 🚀 Local Development Setup
+## Local Development Setup
 
 ### 1. Run with Docker Compose (Recommended)
 Launch the complete microservice stack (FastAPI, PostGIS, OSRM Engine, Next.js Frontend) with a single command:
@@ -74,7 +74,7 @@ uvicorn app.main:app --reload --port 8000
 
 ---
 
-## ☁️ Render Production Deployment Guide
+## Render Production Deployment Guide
 
 SurakshaGrid is pre-configured for automated deployment on Render via [`render.yaml`](file:///c:/Dev/SurakshaGrid/surakshagrid/render.yaml).
 
@@ -89,7 +89,7 @@ SurakshaGrid is pre-configured for automated deployment on Render via [`render.y
 
 ---
 
-## 📡 Key REST API Reference (`/api/v1/*`)
+## Key REST API Reference (`/api/v1/*`)
 
 | Method | Endpoint | Description | Request Payload / Params |
 | :--- | :--- | :--- | :--- |
@@ -118,7 +118,7 @@ curl -X POST "http://localhost:8000/api/v1/routes/safe-corridor" \
 
 ---
 
-## 🌊 Disaster Simulation CLI
+## Disaster Simulation CLI
 
 SurakshaGrid includes a CLI harness to simulate synthetic flood progression, rising gauge telemetry, and citizen SOS dispatches:
 
@@ -129,7 +129,7 @@ python -m app run-simulation --duration 60 --interval 2.0
 
 ---
 
-## 🧪 Testing & Verification
+## Testing & Verification
 
 ```bash
 # Run full Pytest backend test suite (77+ passed)

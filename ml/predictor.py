@@ -84,3 +84,14 @@ def predict_risk(
         return _predictor.predict_risk(lat, lng, rain_rate, discharge, **valid_kwargs)
     except Exception:
         return _predictor.predict_risk(lat, lng, rain_rate, discharge)
+
+
+def predict_inundation(payload: dict[str, Any]) -> dict[str, Any]:
+    """Convenience wrapper for dict payloads."""
+    lat = float(payload.get("lat", 28.6321))
+    lng = float(payload.get("lng", 77.4446))
+    rain_rate = float(payload.get("precipitation_rate_mm_hr", 50.0))
+    discharge = float(payload.get("upstream_discharge_m3_s", 1200.0))
+    res = predict_risk(lat, lng, rain_rate, discharge)
+    res["water_rise_m"] = res.get("water_rise_meters", 1.8)
+    return res
