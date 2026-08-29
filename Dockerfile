@@ -1,5 +1,5 @@
-# Multi-stage Dockerfile for SurakshaGrid Geospatial Backend
-# Stage 1: Build Dependencies
+# Multi-stage Dockerfile for SurakshaGrid Geospatial Backend on Render
+# Stage 1: Build & Compile C-Extensions & Wheels
 FROM python:3.11-slim AS builder
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -23,10 +23,10 @@ RUN pip install --upgrade pip \
     && pip install --prefix=/install -r requirements.txt
 
 COPY . .
-RUN PYTHONPATH=/install/lib/python3.11/site-packages python -m ml.train_model
+RUN PYTHONPATH=/install/lib/python3.11/site-packages python -m ml.train_hydrology
 
-# Stage 2: Clean Runtime Image
-FROM python:3.11-slim AS runtime
+# Stage 2: Lean Production Runtime Image
+FROM python:3.11-slim AS runner
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -41,7 +41,7 @@ RUN apt-get update \
         libproj-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Non-root application user execution
+# Create non-root application user for enhanced container security
 RUN groupadd -g 10001 appgroup \
     && useradd -u 10001 -g appgroup -s /bin/bash -m appuser
 
@@ -52,9 +52,9 @@ COPY --from=builder --chown=appuser:appgroup /build /app
 
 USER appuser
 
-EXPOSE 8000
+EXPOSE 10000
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD curl -f http://localhost:8000/health || exit 1
+    CMD curl -f http://localhost:${PORT:-10000}/health || exit 1
 
-ENTRYPOINT ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-10000}"]

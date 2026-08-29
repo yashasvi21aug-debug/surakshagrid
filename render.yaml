@@ -17,6 +17,8 @@ services:
         fromDatabase:
           name: surakshagrid-postgis
           property: connectionString
+      - key: CORS_ALLOWED_ORIGINS
+        value: '["*"]'
 
 databases:
   - name: surakshagrid-postgis
