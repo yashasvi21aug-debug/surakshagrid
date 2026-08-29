@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import time
 from typing import Any
 
@@ -8,11 +9,13 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from app.websocket_manager import manager
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(tags=["ws"])
 
 
 async def _handle_room_websocket(websocket: WebSocket, room_name: str) -> None:
-    """Helper to handle connection, ping-pong heartbeat, and disconnects for room websockets."""
+    """Handle connection lifecycle, channels, ping-pong keep-alive, and disconnects for WebSocket clients."""
     await manager.connect(websocket, room=room_name)
     try:
         await websocket.send_json(
@@ -30,13 +33,33 @@ async def _handle_room_websocket(websocket: WebSocket, room_name: str) -> None:
                 continue
             try:
                 payload = json.loads(data)
+                if payload.get("type") == "ping":
+                    await websocket.send_json({"type": "pong", "timestamp": time.time()})
+                    continue
+
+                if payload.get("type") == "subscribe":
+                    channel = payload.get("channel", room_name)
+                    async with manager._lock:
+                        if channel not in manager.rooms:
+                            manager.rooms[channel] = set()
+                        manager.rooms[channel].add(websocket)
+                    await websocket.send_json({"type": "SUBSCRIBE_ACK", "channel": channel})
+                    continue
+
                 await manager.broadcast_to_rooms(payload, [room_name])
             except Exception:
                 pass
     except WebSocketDisconnect:
         manager.disconnect(websocket, room=room_name)
-    except Exception:
+    except Exception as error:
+        logger.debug("WebSocket exception in room %s: %s", room_name, error)
         manager.disconnect(websocket, room=room_name)
+
+
+@router.websocket("/ws")
+async def gateway_websocket_endpoint(websocket: WebSocket) -> None:
+    """General WebSocket gateway for live incident and river telemetry streams."""
+    await _handle_room_websocket(websocket, "dashboard")
 
 
 @router.websocket("/ws/dashboard")

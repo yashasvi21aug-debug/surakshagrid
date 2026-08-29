@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from typing import Any
-from fastapi import APIRouter, HTTPException, status, Body
+from fastapi import APIRouter, Depends, HTTPException, status, Body
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.database import get_async_db
 from app.schemas import FloodRiskRequest, FloodRiskResponse
 from app.services.ml_service import ml_service
 from ml.predictor import predict_risk
@@ -20,6 +22,14 @@ async def predict_flood_risk(request: FloodRiskRequest) -> FloodRiskResponse:
 async def predict_inundation_risk(request: FloodRiskRequest) -> FloodRiskResponse:
     """Predict 6-12 hour subcatchment flood inundation probability and estimated water rise."""
     return ml_service.predict_subcatchment_risk(request)
+
+
+@router.post("/trigger-forecast")
+async def trigger_batch_forecast(
+    db: AsyncSession = Depends(get_async_db),
+) -> dict[str, Any]:
+    """Batch job evaluating all sub-catchment zones and updating dynamic PostGIS hazard layers (source='ML')."""
+    return await ml_service.evaluate_and_persist_subcatchment_forecast(db)
 
 
 @router.post("/evaluate-risk")

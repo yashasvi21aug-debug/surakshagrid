@@ -94,3 +94,18 @@ def test_process_sar_tif_with_geotiff(sample_sar_scene):
     finally:
         if os.path.exists(tmp_path):
             os.remove(tmp_path)
+
+
+@pytest.mark.asyncio
+async def test_sar_ingest_api_endpoint(client):
+    """Test POST /api/v1/spatial/sar-ingest REST endpoint."""
+    response = await client.post(
+        "/api/v1/spatial/sar-ingest",
+        params={"s3_uri": "s3://sentinel-1-bucket/GRD/2026/08/29/scene1.tif"},
+    )
+    assert response.status_code == 200
+    geojson = response.json()
+    assert geojson["type"] == "FeatureCollection"
+    assert "features" in geojson
+    assert len(geojson["features"]) >= 1
+    assert geojson["features"][0]["geometry"]["type"] == "Polygon"

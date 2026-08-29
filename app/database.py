@@ -28,3 +28,7 @@ async def init_db():
     except Exception as e:
         print("Async DB Init Warning:", e)
         return False
+
+get_async_db = get_db
+init_db_async = init_db
+SYNC_DATABASE_URL = DATABASE_URL

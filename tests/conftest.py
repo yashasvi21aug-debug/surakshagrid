@@ -48,7 +48,7 @@ class FakeAsyncSession:
         if getattr(record, "timestamp", None) is None:
             record.timestamp = datetime.now(timezone.utc)
         self.records.append(record)
-        if record.__class__.__name__ in ("CitizenSOS", "SOSIncident") and record not in self.sos:
+        if record.__class__.__name__ in ("CitizenSOS", "SOSIncident", "Incident") and record not in self.sos:
             self.sos.append(record)
 
     async def commit(self) -> None:

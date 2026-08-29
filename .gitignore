@@ -1,13 +1,38 @@
+# Python & Virtual Envs
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
 .venv/
-.env
+env/
+venv/
+ENV/
 .pytest_cache/
 .mypy_cache/
-.vscode/
-*.log
-.DS_Store
-*.db
+.coverage
+htmlcov/
 
+# Node & Next.js Build Artifacts
+node_modules/
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/build/
+.npm
+*.log
+
+# Environments & Local Secrets
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# IDEs & System Files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.db
+*.dump
+scratch/

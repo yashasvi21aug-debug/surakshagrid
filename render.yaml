@@ -1,11 +1,13 @@
 services:
+  # 1. FastAPI Geospatial Backend Web Service
   - type: web
     name: surakshagrid-api
     env: docker
     dockerfilePath: ./Dockerfile
     plan: starter
     region: singapore
-    healthCheckPath: /health
+    healthCheckPath: /api/v1/health
+    preDeployCommand: "sh scripts/pre_deploy.sh"
     envVars:
       - key: APP_ENV
         value: production
@@ -15,14 +17,51 @@ services:
         generateValue: true
       - key: DATABASE_URL
         fromDatabase:
-          name: surakshagrid-postgis
+          name: surakshagrid-db
           property: connectionString
       - key: CORS_ALLOWED_ORIGINS
-        value: '["*"]'
+        value: '["https://surakshagrid.onrender.com","http://localhost:3000"]'
+
+  # 2. Next.js 14+ Frontend Web Service
+  - type: web
+    name: surakshagrid-frontend
+    env: node
+    rootDir: frontend
+    plan: starter
+    region: singapore
+    buildCommand: "npm install && npm run build"
+    startCommand: "npm start"
+    envVars:
+      - key: NEXT_PUBLIC_API_URL
+        fromService:
+          type: web
+          name: surakshagrid-api
+          property: url
+      - key: NEXT_PUBLIC_WS_URL
+        fromService:
+          type: web
+          name: surakshagrid-api
+          property: url
+
+  # 3. Scheduled Daily PostGIS Database Backup Cron Job
+  - type: cron
+    name: surakshagrid-daily-backup
+    env: docker
+    dockerfilePath: ./Dockerfile
+    schedule: "0 2 * * *"
+    startCommand: "sh scripts/backup_db.sh"
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: surakshagrid-db
+          property: connectionString
+      - key: S3_BACKUP_BUCKET
+        value: "surakshagrid-backups-bucket"
 
 databases:
-  - name: surakshagrid-postgis
-    databaseName: surakshagrid
+  # 4. Managed PostgreSQL Database with PostGIS Extension
+  - name: surakshagrid-db
+    databaseName: surakshagrid_db
     user: surakshagrid
     plan: starter
     region: singapore

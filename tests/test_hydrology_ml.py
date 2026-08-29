@@ -33,3 +33,14 @@ async def test_predict_inundation_route_endpoint(client):
     assert "inundation_probability" in data
     assert "estimated_water_rise_meters" in data
     assert "severity_classification" in data
+
+
+@pytest.mark.asyncio
+async def test_trigger_forecast_route_endpoint(client):
+    response = await client.post("/api/v1/ml/trigger-forecast")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "COMPLETED"
+    assert data["forecast_horizon_hours"] == "6-12"
+    assert data["subcatchments_evaluated"] >= 1
+    assert "geojson" in data

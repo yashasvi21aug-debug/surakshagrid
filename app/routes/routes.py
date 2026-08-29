@@ -1,97 +1,101 @@
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database import get_db
+from app.database import get_async_db
 from app.routes.auth import OfficerPrincipal, require_role
-from app.services.routing import FloodAvoidanceRoutingService, RoutingError, RoutingService
+from app.services.routing import RoutingError, routing_service
 
 router = APIRouter(prefix="/api/v1/routes", tags=["routes"])
-routing_service = RoutingService()
-evacuation_routing_service = routing_service
 
 
-def _coordinate(value: object, field_name: str) -> tuple[float, float]:
-    if isinstance(value, dict):
+def parse_route_coordinates(payload: dict[str, Any]) -> tuple[tuple[float, float], tuple[float, float], str]:
+    """Parse origin, destination [lng, lat] tuples and profile from flexible payload formats."""
+    # Format 1: PRD v1.0.0 explicit start/end fields
+    if "start_lat" in payload and "start_lng" in payload and "end_lat" in payload and "end_lng" in payload:
         try:
-            return float(value["lng"]), float(value["lat"])
-        except (KeyError, TypeError, ValueError) as error:
-            raise HTTPException(status_code=400, detail=f"{field_name} must contain lat and lng") from error
-    if isinstance(value, (list, tuple)) and len(value) == 2:
-        try:
-            return float(value[0]), float(value[1])
+            o_lat, o_lng = float(payload["start_lat"]), float(payload["start_lng"])
+            d_lat, d_lng = float(payload["end_lat"]), float(payload["end_lng"])
+            profile = str(payload.get("vehicle_type", payload.get("profile", "driving")))
+            return (o_lng, o_lat), (d_lng, d_lat), profile
         except (TypeError, ValueError) as error:
-            raise HTTPException(status_code=400, detail=f"{field_name} must be [lng, lat]") from error
-    raise HTTPException(status_code=400, detail=f"{field_name} must be [lng, lat] or an object with lat/lng")
+            raise HTTPException(status_code=400, detail="Invalid start/end coordinates") from error
+
+    # Format 2: origin and destination [lng, lat] arrays or objects
+    origin_raw = payload.get("origin", payload.get("origin_coords"))
+    dest_raw = payload.get("destination", payload.get("destination_coords"))
+
+    if origin_raw and dest_raw:
+        def _extract(val: Any) -> tuple[float, float]:
+            if isinstance(val, dict):
+                return float(val.get("lng", val.get("longitude", 0))), float(val.get("lat", val.get("latitude", 0)))
+            if isinstance(val, (list, tuple)) and len(val) == 2:
+                return float(val[0]), float(val[1])
+            raise ValueError("Invalid coordinate format")
+
+        try:
+            origin = _extract(origin_raw)
+            dest = _extract(dest_raw)
+            profile = str(payload.get("profile", payload.get("vehicle_type", "driving")))
+            return origin, dest, profile
+        except (TypeError, ValueError, IndexError) as error:
+            raise HTTPException(status_code=400, detail="Coordinates must be [lng, lat] pairs") from error
+
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail="Missing route coordinates. Provide start_lat/start_lng/end_lat/end_lng or origin/destination.",
+    )
+
+
+@router.post("/safe-corridor")
+@router.post("/evacuate")
+async def safe_corridor_route(
+    payload: dict[str, Any],
+    db: AsyncSession = Depends(get_async_db),
+) -> dict[str, Any]:
+    """Calculate dynamic flood-evasive routing bypassing submerged road nodes and return GeoJSON LineString."""
+    origin, destination, profile = parse_route_coordinates(payload)
+
+    raw_zones = payload.get(
+        "active_flood_zones",
+        payload.get("active_flood_zone", payload.get("active_flood_zone_coordinates")),
+    )
+    if not raw_zones:
+        flood_zones = await routing_service.get_critical_inundation_zones(db)
+    else:
+        if isinstance(raw_zones, dict):
+            raw_zones = [raw_zones]
+        flood_zones = raw_zones
+
+    try:
+        return await routing_service.calculate_safe_corridor(
+            origin=origin,
+            destination=destination,
+            flood_zones=flood_zones,
+            profile=profile,
+        )
+    except RoutingError as error:
+        raise HTTPException(status_code=502, detail=str(error)) from error
 
 
 @router.post("/safe-dispatch")
 async def safe_dispatch_route(
-    payload: dict,
-    db: AsyncSession = Depends(get_db),
-) -> dict:
-    origin_coords = payload.get("origin_coords")
-    destination_coords = payload.get("destination_coords")
-    profile = payload.get("profile", "driving")
-
-    if not origin_coords or not destination_coords:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="origin_coords and destination_coords are required",
-        )
-
-    try:
-        origin = (float(origin_coords[1]), float(origin_coords[0]))
-        destination = (float(destination_coords[1]), float(destination_coords[0]))
-    except (TypeError, ValueError, IndexError):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Coordinates must be [lng, lat] pairs",
-        ) from None
-
-    return await routing_service.get_safe_dispatch_route(
-        db=db,
-        origin_coords=origin,
-        destination_coords=destination,
-        profile=profile,
-    )
+    payload: dict[str, Any],
+    db: AsyncSession = Depends(get_async_db),
+) -> dict[str, Any]:
+    """Safe dispatch routing for rescue teams."""
+    return await safe_corridor_route(payload=payload, db=db)
 
 
 @router.post("/dispatch")
 async def dispatch_route(
-    payload: dict,
-    db: AsyncSession = Depends(get_db),
+    payload: dict[str, Any],
+    db: AsyncSession = Depends(get_async_db),
     officer: OfficerPrincipal = Depends(require_role("COMMANDER", "DISPATCHER")),
-) -> dict:
+) -> dict[str, Any]:
     """Administrative dispatch action; requires an authenticated command officer."""
     del officer
-    return await safe_dispatch_route(payload=payload, db=db)
-
-
-@router.post("/evacuate")
-async def evacuate_route(payload: dict) -> dict:
-    """Return an OSRM road corridor that avoids active flood polygons deeper than 0.3m."""
-    origin = _coordinate(payload.get("origin"), "origin")
-    destination = _coordinate(payload.get("destination"), "destination")
-    flood_zones = payload.get(
-        "active_flood_zones",
-        payload.get("active_flood_zone", payload.get("active_flood_zone_coordinates", [])),
-    )
-    if "active_flood_zones" not in payload and "active_flood_zone_coordinates" in payload:
-        flood_zones = {
-            "coordinates": flood_zones,
-            "water_depth_m": payload.get("water_depth_m", payload.get("waterDepth", 0)),
-        }
-    if not isinstance(flood_zones, list):
-        flood_zones = [flood_zones]
-
-    try:
-        return await evacuation_routing_service.calculate_safe_corridor(
-            origin=origin,
-            destination=destination,
-            flood_zones=flood_zones,
-            profile=str(payload.get("profile", "driving")),
-        )
-    except RoutingError as error:
-        raise HTTPException(status_code=502, detail=str(error)) from error
+    return await safe_corridor_route(payload=payload, db=db)

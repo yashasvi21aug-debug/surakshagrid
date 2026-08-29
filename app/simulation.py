@@ -6,6 +6,9 @@ import random
 from datetime import datetime, timezone
 from typing import Any
 
+from app.services.ml_service import ml_service
+from app.services.routing import routing_service
+from app.services.sar import sar_processor
 from app.websocket_manager import manager
 
 logger = logging.getLogger(__name__)
@@ -63,7 +66,7 @@ EMERGENCY_TYPES = ["CRITICAL_TRAPPED", "MEDICAL_EVAC", "FOOD_WATER", "INFRASTRUC
 
 
 class FloodSimulationHarness:
-    """Dynamic Live Simulation Engine for SurakshaGrid Flood Disaster Events."""
+    """Dynamic Live Simulation Engine for SurakshaGrid Disaster Events adhering to PRD 4.5."""
 
     def __init__(self, interval: float = 2.0) -> None:
         self.interval = interval
@@ -71,7 +74,6 @@ class FloodSimulationHarness:
         self._task: asyncio.Task[None] | None = None
         self.step_count = 0
 
-        # Simulated vehicle locations
         self.vehicles = [
             {"unit_id": "NDRF-BOAT-01", "unit_name": "NDRF Rescue Boat 01", "lat": 28.6590, "lng": 77.2490, "target_lat": 28.6800, "target_lng": 77.3500},
             {"unit_id": "RESCUE-TRUCK-04", "unit_name": "Sahibabad Rescue Truck 04", "lat": 28.6860, "lng": 77.3015, "target_lat": 28.6940, "target_lng": 77.3045},
@@ -144,11 +146,17 @@ class FloodSimulationHarness:
             "gauges": gauge_events,
         }, ["dashboard", "responders"])
 
-        # 2. Simulate Expanding Inundation Hazard Polygons
+        # 2. Simulate Expanding Inundation Hazard Polygons & XGBoost Predictions
         polygon_features = []
         for zone in HINDON_YAMUNA_BASIN_POLYGONS:
             depth = round(zone["base_depth"] + rise_offset, 2)
-            risk_score = min(0.99, round(0.5 + depth * 0.15, 2))
+            ml_pred = ml_service.predict_basin_risk(
+                precipitation_mm=80.0,
+                river_discharge_m3s=1800.0,
+                soil_saturation_pct=92.0,
+            )
+            risk_score = ml_pred.get("inundation_probability", 0.92)
+
             polygon_features.append({
                 "type": "Feature",
                 "geometry": {
@@ -173,19 +181,21 @@ class FloodSimulationHarness:
             },
         }, ["dashboard", "responders", "citizens"])
 
-        # 3. Simulate Occasional Emergency SOS Bursts
+        # 3. Simulate Occasional High-Priority Emergency SOS Bursts
         if self.step_count % 3 == 0:
             target_zone = random.choice(HINDON_YAMUNA_BASIN_POLYGONS)
             base_coord = target_zone["coordinates"][0]
+            category = random.choice(["CRITICAL_TRAPPED", "MEDICAL_EVAC", "FOOD_WATER"])
             sos_event = {
                 "event_type": "NEW_SOS_ALERT",
                 "id": f"sim-sos-{self.step_count}",
+                "category": category,
                 "phone_number": f"+91-98765{random.randint(10000, 99999)}",
-                "emergency_type": random.choice(EMERGENCY_TYPES),
+                "emergency_type": category,
                 "lat": round(base_coord[1] + random.uniform(-0.005, 0.005), 4),
                 "lng": round(base_coord[0] + random.uniform(-0.005, 0.005), 4),
-                "rain_rate": round(25.0 + rise_offset * 10 + random.uniform(0, 15), 1),
-                "risk_status": "HIGH" if rise_offset > 1.0 else "MEDIUM",
+                "rain_rate": 80.0,
+                "risk_status": "CRITICAL",
                 "status": "PENDING",
                 "timestamp": now_str,
             }
@@ -193,7 +203,6 @@ class FloodSimulationHarness:
 
         # 4. Simulate Vehicle Telemetry Movement
         for vehicle in self.vehicles:
-            # Advance slightly toward target
             vehicle["lat"] = round(vehicle["lat"] + (vehicle["target_lat"] - vehicle["lat"]) * 0.05 + random.uniform(-0.0002, 0.0002), 5)
             vehicle["lng"] = round(vehicle["lng"] + (vehicle["target_lng"] - vehicle["lng"]) * 0.05 + random.uniform(-0.0002, 0.0002), 5)
 
@@ -204,5 +213,44 @@ class FloodSimulationHarness:
         }, ["dashboard", "responders"])
 
 
-# Global simulation instance
+async def run_monsoon_cloudburst_scenario(duration_seconds: float = 10.0) -> dict[str, Any]:
+    """Execute end-to-end synthetic 80mm/hr monsoon cloudburst disaster simulation."""
+    logger.info("Executing Monsoon Cloudburst (80mm/hr) field simulation scenario...")
+
+    # 1. Process synthetic Sentinel-1 SAR flood imagery
+    sar_result = sar_processor.extract_water_polygons()
+
+    # 2. Trigger XGBoost Hydrodynamic Inundation Prediction
+    ml_forecast = ml_service.predict_basin_risk(
+        precipitation_mm=80.0,
+        river_discharge_m3s=2200.0,
+        soil_saturation_pct=96.0,
+    )
+
+    # 3. Trigger Tactical Green Corridor Routing Engine
+    corridor = await routing_service.calculate_safe_corridor(
+        origin=(77.4300, 28.6200),
+        destination=(77.4480, 28.6375),
+        flood_zones=sar_result.get("geojson", {}).get("features", []),
+    )
+
+    # 4. Stream telemetry event to WebSocket subscribers
+    await manager.broadcast_to_rooms({
+        "event_type": "CLOUDBURST_SIMULATION_EVENT",
+        "rainfall_rate_mm_hr": 80.0,
+        "ml_forecast": ml_forecast,
+        "sar_polygons_extracted": len(sar_result.get("polygons", [])),
+        "evasive_corridor_status": corridor.get("status"),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }, ["dashboard", "responders", "citizens"])
+
+    return {
+        "scenario": "monsoon_cloudburst_80mm_hr",
+        "sar_extraction": sar_result,
+        "ml_forecast": ml_forecast,
+        "tactical_corridor": corridor,
+        "status": "SIMULATION_SUCCESSFUL",
+    }
+
+
 simulation_harness = FloodSimulationHarness()

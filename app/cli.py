@@ -18,9 +18,9 @@ def cmd_run(args: argparse.Namespace) -> int:
     print("==================================================")
 
     # 1. Compile ML Model Weights if missing
-    classifier_path = PROJECT_ROOT / "ml" / "models" / "inundation_classifier.json"
-    regressor_path = PROJECT_ROOT / "ml" / "models" / "water_rise_regressor.json"
-    if not (classifier_path.is_file() and regressor_path.is_file()):
+    inundation_path = PROJECT_ROOT / "ml" / "models" / "inundation_xgb.json"
+    depth_path = PROJECT_ROOT / "ml" / "models" / "depth_xgb.json"
+    if not (inundation_path.is_file() and depth_path.is_file()):
         print("ML model artifacts missing. Compiling XGBoost weights...")
         from ml.train_and_save import compile_models
         compile_models()
@@ -41,12 +41,12 @@ def cmd_run(args: argparse.Namespace) -> int:
     if not args.no_seed:
         try:
             from app.database import AsyncSessionLocal
-            from app.models.spatial import Shelter
+            from app.models import Incident
             from sqlalchemy import func, select
 
             async def check_empty() -> bool:
                 async with AsyncSessionLocal() as session:
-                    count = await session.scalar(select(func.count()).select_from(Shelter))
+                    count = await session.scalar(select(func.count()).select_from(Incident))
                     return count == 0
 
             if asyncio.run(check_empty()):
@@ -90,7 +90,7 @@ def cmd_seed(args: argparse.Namespace) -> int:
     print("Seeding SurakshaGrid database...")
     from app.seed import seed_all
     asyncio.run(seed_all(clear_existing=not args.keep_existing))
-    print("SurakshaGrid demo data seeded successfully.")
+    print("✓ SurakshaGrid PostGIS demo data seeded successfully.")
     return 0
 
 
@@ -109,20 +109,25 @@ def cmd_process_sar(args: argparse.Namespace) -> int:
         print("Error: --input argument is required for SAR processing.")
         return 1
     print(f"Processing SAR raster: {args.input}...")
-    from app.services.sar import process_sar_tif, ingest_flood_polygons_to_db
-    result = process_sar_tif(args.input, threshold_db=args.threshold_db)
+    from app.services.sar import process_sar_tif
+    result = process_sar_tif(args.input)
     print(f"Extracted {len(result.polygons)} water polygon(s). Total surface water area: {result.total_surface_water_area_sq_km} sq km")
-    count = asyncio.run(ingest_flood_polygons_to_db(result.polygons))
-    print(f"Persisted {count} inundation zone(s) into database.")
     return 0
 
 
 def cmd_simulate(args: argparse.Namespace) -> int:
     """Run dynamic live disaster simulation harness."""
-    print(f"Starting SurakshaGrid live disaster simulation (duration: {args.duration or 'infinite'}s, interval: {args.interval}s)...")
-    from app.simulation import simulation_harness
+    scenario = getattr(args, "scenario", "urban_flood")
+    print(f"Starting SurakshaGrid live disaster simulation (scenario: {scenario}, duration: {args.duration or 'infinite'}s, interval: {args.interval}s)...")
+    from app.simulation import run_monsoon_cloudburst_scenario, simulation_harness
+
+    async def _run() -> None:
+        if scenario in ("monsoon_cloudburst", "urban_flood"):
+            await run_monsoon_cloudburst_scenario()
+        await simulation_harness.start(duration_seconds=args.duration)
+
     try:
-        asyncio.run(simulation_harness.start(duration_seconds=args.duration))
+        asyncio.run(_run())
     except KeyboardInterrupt:
         print("\nSimulation stopped by user.")
     return 0
@@ -142,9 +147,12 @@ def main(argv: list[str] | None = None) -> int:
     run_parser.add_argument("--reload", action="store_true", default=True, help="Enable auto-reload")
     run_parser.add_argument("--no-seed", action="store_true", help="Skip automatic DB seeding check")
 
-    # Command: seed
+    # Command: seed & seed-db
     seed_parser = subparsers.add_parser("seed", help="Seed demo records into database")
     seed_parser.add_argument("--keep-existing", action="store_true", help="Do not clear existing database records")
+
+    seed_db_parser = subparsers.add_parser("seed-db", help="Seed demo records into PostGIS database")
+    seed_db_parser.add_argument("--keep-existing", action="store_true", help="Do not clear existing database records")
 
     # Command: train / train-ml
     subparsers.add_parser("train", help="Train and save ML model pipeline artifacts")
@@ -155,10 +163,16 @@ def main(argv: list[str] | None = None) -> int:
     sar_parser.add_argument("--input", required=True, help="Path to SAR GeoTIFF file")
     sar_parser.add_argument("--threshold-db", type=float, default=-14.0, help="Backscatter threshold in dB")
 
-    # Command: simulate
+    # Command: simulate / run-simulation
     sim_parser = subparsers.add_parser("simulate", help="Run dynamic live disaster simulation harness")
+    sim_parser.add_argument("--scenario", default="urban_flood", help="Simulation scenario (default: urban_flood)")
     sim_parser.add_argument("--duration", type=float, default=None, help="Simulation duration in seconds (default: infinite)")
     sim_parser.add_argument("--interval", type=float, default=2.0, help="Tick interval in seconds (default: 2.0)")
+
+    run_sim_parser = subparsers.add_parser("run-simulation", help="Run dynamic live disaster simulation harness")
+    run_sim_parser.add_argument("--scenario", default="urban_flood", help="Simulation scenario (default: urban_flood)")
+    run_sim_parser.add_argument("--duration", type=float, default=None, help="Simulation duration in seconds (default: infinite)")
+    run_sim_parser.add_argument("--interval", type=float, default=2.0, help="Tick interval in seconds (default: 2.0)")
 
     # Parse args (default to "run" if no subcommand specified)
     parsed_args = parser.parse_args(argv)
@@ -168,16 +182,18 @@ def main(argv: list[str] | None = None) -> int:
     handlers = {
         "run": cmd_run,
         "seed": cmd_seed,
+        "seed-db": cmd_seed,
         "train": cmd_train_ml,
         "train-ml": cmd_train_ml,
         "process-sar": cmd_process_sar,
         "simulate": cmd_simulate,
+        "run-simulation": cmd_simulate,
     }
 
     handler = handlers.get(parsed_args.command)
     if handler:
         return handler(parsed_args)
-    
+
     parser.print_help()
     return 1
 

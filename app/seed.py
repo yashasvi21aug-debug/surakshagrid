@@ -10,172 +10,131 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import AsyncSessionLocal, SYNC_DATABASE_URL
-from app.models.flood_zone import FloodZone, InundationZone
-from app.models.gis_models import (
+from app.models import (
     CitizenSOS,
     CitizenStatus,
     EmergencyType,
+    FloodZone,
     GaugeStatus,
+    Incident,
+    InundationZone,
     IoTWaterGauge,
+    Officer,
+    OfficerRole,
     RescueUnit,
     RescueUnitStatus,
+    SensorTelemetry,
+    Shelter,
+    User,
+    UserRole,
 )
-from app.models.spatial import Shelter
-from app.models.user import User, UserRole
+from app.services.auth import hash_password
 
-SHELTERS = [
-    {"name": "Hindon High-Ground Relief Shelter", "lat": 28.6812, "lng": 77.3764, "capacity": 450},
-    {"name": "Sahibabad Civil Defence Centre", "lat": 28.6765, "lng": 77.3516, "capacity": 300},
-    {"name": "NCR East Evacuation School", "lat": 28.7148, "lng": 77.3182, "capacity": 600},
-]
-
-FLOOD_ZONES = [
+# 1. Synthetic PostGIS Flood Zones (3 Multi-polygon extents across urban river basins)
+FLOOD_ZONES_SEED = [
     {
-        "zone_name": "Hindon Basin North Lowland",
-        "polygon": "POLYGON((77.3380 28.6620,77.3620 28.6620,77.3620 28.6850,77.3380 28.6850,77.3380 28.6620))",
-        "water_depth_m": 1.45,
+        "zone_name": "Hindon River Basin North Lowland",
+        "source": "SAR",
         "risk_level": "CRITICAL",
+        "depth_m": 2.8,
+        "polygon": "POLYGON((77.3380 28.6620, 77.3620 28.6620, 77.3620 28.6850, 77.3380 28.6850, 77.3380 28.6620))",
     },
     {
         "zone_name": "Hindon Basin South Floodplain",
-        "polygon": "POLYGON((77.3650 28.6260,77.3890 28.6260,77.3890 28.6500,77.3650 28.6500,77.3650 28.6260))",
-        "water_depth_m": 0.85,
+        "source": "ML",
         "risk_level": "HIGH",
+        "depth_m": 1.45,
+        "polygon": "POLYGON((77.3650 28.6260, 77.3890 28.6260, 77.3890 28.6500, 77.3650 28.6500, 77.3650 28.6260))",
     },
     {
-        "zone_name": "Hindon Canal East Perimeter",
-        "polygon": "POLYGON((77.3970 28.6960,77.4210 28.6960,77.4210 28.7180,77.3970 28.7180,77.3970 28.6960))",
-        "water_depth_m": 0.42,
-        "risk_level": "HIGH",
+        "zone_name": "Yamuna East Perimeter Canal Sector",
+        "source": "ML",
+        "risk_level": "MODERATE",
+        "depth_m": 0.65,
+        "polygon": "POLYGON((77.2200 28.6200, 77.2450 28.6200, 77.2450 28.6450, 77.2200 28.6450, 77.2200 28.6200))",
     },
 ]
 
-GAUGES = [
+# 2. IoT River Sensors (5 Monitoring stations with real-time gauges & safe thresholds)
+SENSORS_SEED = [
     {
-        "sensor_name": "Hindon-01",
+        "sensor_id": "SENSOR-HD-01",
+        "name": "Hindon Barrage Gauge 01",
+        "water_level_m": 3.85,
+        "threshold_m": 2.50,
         "lat": 28.6745,
         "lng": 77.3642,
-        "current_water_level_m": 2.8,
-        "warning_threshold_m": 2.5,
-        "status": GaugeStatus.WARNING,
-        "last_ping": datetime.now(timezone.utc),
     },
     {
-        "sensor_name": "Yamuna-Delta-02",
+        "sensor_id": "SENSOR-YM-02",
+        "name": "Yamuna Bridge Delta Gauge 02",
+        "water_level_m": 4.10,
+        "threshold_m": 3.20,
         "lat": 28.6475,
         "lng": 77.2387,
-        "current_water_level_m": 4.1,
-        "warning_threshold_m": 3.2,
-        "status": GaugeStatus.CRITICAL,
-        "last_ping": datetime.now(timezone.utc) - timedelta(minutes=2),
     },
     {
-        "sensor_name": "NCR-West-07",
+        "sensor_id": "SENSOR-NW-07",
+        "name": "NCR West Stream Gauge 07",
+        "water_level_m": 1.85,
+        "threshold_m": 2.30,
         "lat": 28.5931,
         "lng": 77.1634,
-        "current_water_level_m": 1.9,
-        "warning_threshold_m": 2.3,
-        "status": GaugeStatus.NORMAL,
-        "last_ping": datetime.now(timezone.utc) - timedelta(minutes=8),
     },
     {
-        "sensor_name": "East-Canal-11",
+        "sensor_id": "SENSOR-EC-11",
+        "name": "East Canal Regulating Gate 11",
+        "water_level_m": 3.40,
+        "threshold_m": 2.80,
         "lat": 28.7140,
         "lng": 77.2965,
-        "current_water_level_m": 3.4,
-        "warning_threshold_m": 2.8,
-        "status": GaugeStatus.WARNING,
-        "last_ping": datetime.now(timezone.utc) - timedelta(minutes=5),
+    },
+    {
+        "sensor_id": "SENSOR-SB-05",
+        "name": "Sahibabad Feeder Gauge 05",
+        "water_level_m": 2.95,
+        "threshold_m": 2.40,
+        "lat": 28.6765,
+        "lng": 77.3516,
     },
 ]
 
-INUNDATION_ZONES = [
-    {
-        "zone_name": "Yamuna-Right-Bank",
-        "polygon": "POLYGON((77.2200 28.6200, 77.2320 28.6200, 77.2320 28.6400, 77.2200 28.6400, 77.2200 28.6200))",
-        "risk_score": 0.85,
-        "estimated_water_rise": 1.8,
-        "predicted_horizon_hours": 6,
-    },
-    {
-        "zone_name": "Hindon-Lowland",
-        "polygon": "POLYGON((77.3380 28.6620, 77.3620 28.6620, 77.3620 28.6850, 77.3380 28.6850, 77.3380 28.6620))",
-        "risk_score": 0.85,
-        "estimated_water_rise": 1.8,
-        "predicted_horizon_hours": 8,
-    },
-    {
-        "zone_name": "NCR-East-Floodplain",
-        "polygon": "POLYGON((77.3020 28.7060, 77.3220 28.7060, 77.3220 28.7350, 77.3020 28.7350, 77.3020 28.7060))",
-        "risk_score": 0.85,
-        "estimated_water_rise": 1.8,
-        "predicted_horizon_hours": 10,
-    },
+# 3. Incidents / Citizen SOS Markers (10 Priority Distress Requests)
+INCIDENTS_SEED = [
+    {"phone": "+91-9876543210", "category": "CRITICAL_TRAPPED", "lat": 28.6321, "lng": 77.4446, "notes": "Submerged residential ground floor. 4 citizens stranded on roof."},
+    {"phone": "+91-9811122233", "category": "MEDICAL_EVAC", "lat": 28.6550, "lng": 77.2485, "notes": "Dialysis patient requires urgent boat medical evacuation."},
+    {"phone": "+91-9000999911", "category": "FOOD_WATER", "lat": 28.6940, "lng": 77.3045, "notes": "Community shelter food ration supplies depleted for 25 people."},
+    {"phone": "+91-9765432100", "category": "CRITICAL_TRAPPED", "lat": 28.6810, "lng": 77.3520, "notes": "Elderly couple trapped in flooded vehicle near bridge."},
+    {"phone": "+91-9822334455", "category": "MEDICAL_EVAC", "lat": 28.6410, "lng": 77.3890, "notes": "Infant with high fever stranded in inundated sector."},
+    {"phone": "+91-9833445566", "category": "FOOD_WATER", "lat": 28.6180, "lng": 77.4120, "notes": "Drinking water contamination. Emergency supply requested."},
+    {"phone": "+91-9844556677", "category": "CRITICAL_TRAPPED", "lat": 28.6650, "lng": 77.3300, "notes": "Rising water level in basement apartment."},
+    {"phone": "+91-9855667788", "category": "FOOD_WATER", "lat": 28.7020, "lng": 77.3150, "notes": "Relief camp infant formula and dry ration shortage."},
+    {"phone": "+91-9866778899", "category": "MEDICAL_EVAC", "lat": 28.6290, "lng": 77.2650, "notes": "Injured field volunteer needing stretcher transfer."},
+    {"phone": "+91-9877889900", "category": "CRITICAL_TRAPPED", "lat": 28.6720, "lng": 77.3780, "notes": "Flash flood overflow blocking evacuation exit."},
 ]
 
-RESCUE_UNITS = [
+# 4. Command Officers (1 Commander, 2 Field Operators)
+OFFICERS_SEED = [
     {
-        "unit_name": "NDRF Boat 01",
-        "lat": 28.6590,
-        "lng": 77.2490,
-        "assigned_sos_id": None,
-        "status": RescueUnitStatus.EN_ROUTE,
+        "badge_id": "NDRF-3492",
+        "name": "Commander Rajesh Sharma",
+        "email": "commander.sharma@ndrf.gov.in",
+        "role": OfficerRole.COMMANDER,
+        "password": "Password123!",
     },
     {
-        "unit_name": "Rescue Truck 04",
-        "lat": 28.6860,
-        "lng": 77.3015,
-        "assigned_sos_id": None,
-        "status": RescueUnitStatus.STANDBY,
-    },
-]
-
-USERS = [
-    {"name": "Commander Rajesh Sharma", "phone_number": "+91-9876500001", "role": UserRole.ADMIN, "lat": 28.6321, "lng": 77.4446},
-    {"name": "Rescue Pilot Vikas Verma", "phone_number": "+91-9876500002", "role": UserRole.RESPONDER, "lat": 28.6590, "lng": 77.2490},
-    {"name": "Citizen Aarav Gupta", "phone_number": "+91-9876543210", "role": UserRole.CITIZEN, "lat": 28.6270, "lng": 77.2190},
-]
-
-SOS_RECORDS = [
-    {
-        "phone_number": "+91-9876543210",
-        "emergency_type": EmergencyType.CRITICAL_TRAPPED,
-        "lat": 28.6270,
-        "lng": 77.2190,
-        "rain_rate": 42.8,
-        "risk_status": "HIGH",
-        "status": CitizenStatus.PENDING,
-        "timestamp": datetime.now(timezone.utc) - timedelta(minutes=12),
+        "badge_id": "NDRF-7701",
+        "name": "Operator Vikas Verma",
+        "email": "vikas.verma@ndrf.gov.in",
+        "role": OfficerRole.FIELD_OPERATOR,
+        "password": "Password123!",
     },
     {
-        "phone_number": "+91-9811122233",
-        "emergency_type": EmergencyType.MEDICAL_EVAC,
-        "lat": 28.6550,
-        "lng": 77.2485,
-        "rain_rate": 28.5,
-        "risk_status": "MEDIUM",
-        "status": CitizenStatus.DISPATCHED,
-        "timestamp": datetime.now(timezone.utc) - timedelta(minutes=7),
-    },
-    {
-        "phone_number": "+91-9000999911",
-        "emergency_type": EmergencyType.CRITICAL_TRAPPED,
-        "lat": 28.6940,
-        "lng": 77.3045,
-        "rain_rate": 58.4,
-        "risk_status": "CRITICAL",
-        "status": CitizenStatus.PENDING,
-        "timestamp": datetime.now(timezone.utc) - timedelta(minutes=3),
-    },
-    {
-        "phone_number": "+91-9765432100",
-        "emergency_type": EmergencyType.MEDICAL_EVAC,
-        "lat": 28.6810,
-        "lng": 77.1820,
-        "rain_rate": 19.2,
-        "risk_status": "LOW",
-        "status": CitizenStatus.RESOLVED,
-        "timestamp": datetime.now(timezone.utc) - timedelta(minutes=20),
+        "badge_id": "NDRF-7702",
+        "name": "Operator Priya Singh",
+        "email": "priya.singh@ndrf.gov.in",
+        "role": OfficerRole.FIELD_OPERATOR,
+        "password": "Password123!",
     },
 ]
 
@@ -192,113 +151,111 @@ def polygon_wkt(polygon_text: str) -> Any:
     return WKTElement(polygon_text, srid=4326)
 
 
-async def seed_users(session: AsyncSession) -> None:
-    for u in USERS:
-        existing = (await session.execute(select(User).where(User.phone_number == u["phone_number"]))).scalar_one_or_none()
-        if existing is None:
-            session.add(User(**u))
-
-
-async def seed_gauges(session: AsyncSession) -> None:
-    for gauge in GAUGES:
-        existing = (await session.execute(select(IoTWaterGauge).where(IoTWaterGauge.sensor_name == gauge["sensor_name"]))).scalar_one_or_none()
+async def seed_officers(session: AsyncSession) -> None:
+    for item in OFFICERS_SEED:
+        existing = (await session.execute(select(Officer).where(Officer.badge_id == item["badge_id"]))).scalar_one_or_none()
         if existing is None:
             session.add(
-                IoTWaterGauge(
-                    sensor_name=gauge["sensor_name"],
-                    location=point_wkt(gauge["lat"], gauge["lng"]),
-                    current_water_level_m=gauge["current_water_level_m"],
-                    warning_threshold_m=gauge["warning_threshold_m"],
-                    status=gauge["status"],
-                    last_ping=gauge["last_ping"],
-                )
-            )
-
-
-async def seed_inundation_zones(session: AsyncSession) -> None:
-    for zone in INUNDATION_ZONES:
-        existing = (await session.execute(select(InundationZone).where(InundationZone.zone_name == zone["zone_name"]))).scalar_one_or_none()
-        if existing is None:
-            session.add(
-                InundationZone(
-                    zone_name=zone["zone_name"],
-                    polygon=polygon_wkt(zone["polygon"]),
-                    polygon_geojson=zone["polygon"],
-                    risk_score=zone["risk_score"],
-                    water_depth_m=zone["estimated_water_rise"],
-                    estimated_water_rise=zone["estimated_water_rise"],
-                    predicted_horizon_hours=zone["predicted_horizon_hours"],
-                    created_at=datetime.now(timezone.utc),
-                )
-            )
-
-
-async def seed_rescue_units(session: AsyncSession) -> None:
-    for unit in RESCUE_UNITS:
-        existing = (await session.execute(select(RescueUnit).where(RescueUnit.unit_name == unit["unit_name"]))).scalar_one_or_none()
-        if existing is None:
-            session.add(
-                RescueUnit(
-                    unit_name=unit["unit_name"],
-                    current_location=point_wkt(unit["lat"], unit["lng"]),
-                    assigned_sos_id=unit["assigned_sos_id"],
-                    status=unit["status"],
-                )
-            )
-
-
-async def seed_sos_records(session: AsyncSession) -> None:
-    for record in SOS_RECORDS:
-        existing = (await session.execute(select(CitizenSOS).where(CitizenSOS.phone_number == record["phone_number"]))).scalar_one_or_none()
-        if existing is None:
-            session.add(
-                CitizenSOS(
-                    phone_number=record["phone_number"],
-                    emergency_type=record["emergency_type"],
-                    location=point_wkt(record["lat"], record["lng"]),
-                    lat=record["lat"],
-                    lng=record["lng"],
-                    rain_rate=record["rain_rate"],
-                    risk_status=record["risk_status"],
-                    status=record["status"],
-                    timestamp=record["timestamp"],
-                )
-            )
-
-
-async def seed_shelters(session: AsyncSession) -> None:
-    for item in SHELTERS:
-        existing = (await session.execute(select(Shelter).where(Shelter.name == item["name"]))).scalar_one_or_none()
-        if existing is None:
-            session.add(
-                Shelter(
+                Officer(
+                    badge_id=item["badge_id"],
                     name=item["name"],
-                    geom=point_wkt(item["lat"], item["lng"]),
-                    capacity=item["capacity"],
+                    email=item["email"],
+                    role=item["role"],
+                    hashed_password=hash_password(item["password"]),
                     is_active=True,
                 )
             )
 
 
+async def seed_sensors(session: AsyncSession) -> None:
+    for item in SENSORS_SEED:
+        existing = (await session.execute(select(SensorTelemetry).where(SensorTelemetry.sensor_id == item["sensor_id"]))).scalar_one_or_none()
+        if existing is None:
+            session.add(
+                SensorTelemetry(
+                    sensor_id=item["sensor_id"],
+                    name=item["name"],
+                    water_level_m=item["water_level_m"],
+                    threshold_m=item["threshold_m"],
+                    location=point_wkt(item["lat"], item["lng"]),
+                    timestamp=datetime.now(timezone.utc),
+                )
+            )
+
+        # Mirror in legacy table for backward compatibility
+        existing_gauge = (await session.execute(select(IoTWaterGauge).where(IoTWaterGauge.sensor_name == item["name"]))).scalar_one_or_none()
+        if existing_gauge is None:
+            session.add(
+                IoTWaterGauge(
+                    sensor_name=item["name"],
+                    location=point_wkt(item["lat"], item["lng"]),
+                    current_water_level_m=item["water_level_m"],
+                    warning_threshold_m=item["threshold_m"],
+                    status=GaugeStatus.CRITICAL if item["water_level_m"] > item["threshold_m"] else GaugeStatus.NORMAL,
+                    last_ping=datetime.now(timezone.utc),
+                )
+            )
+
+
 async def seed_flood_zones(session: AsyncSession) -> None:
-    for item in FLOOD_ZONES:
+    for item in FLOOD_ZONES_SEED:
         existing = (await session.execute(select(FloodZone).where(FloodZone.zone_name == item["zone_name"]))).scalar_one_or_none()
         if existing is None:
             session.add(
                 FloodZone(
                     zone_name=item["zone_name"],
+                    source=item["source"],
+                    risk_level=item["risk_level"],
+                    depth_m=item["depth_m"],
+                    water_depth_m=item["depth_m"],
                     polygon=polygon_wkt(item["polygon"]),
                     polygon_geojson=item["polygon"],
-                    risk_score=0.85,
-                    water_depth_m=item["water_depth_m"],
-                    estimated_water_rise=item["water_depth_m"],
-                    predicted_horizon_hours=6,
+                    valid_until=datetime.now(timezone.utc) + timedelta(hours=12),
+                )
+            )
+
+
+async def seed_incidents(session: AsyncSession) -> None:
+    for i, item in enumerate(INCIDENTS_SEED):
+        cat_enum = EmergencyType.CRITICAL_TRAPPED
+        if item["category"] == "MEDICAL_EVAC":
+            cat_enum = EmergencyType.MEDICAL_EVAC
+        elif item["category"] == "FOOD_WATER":
+            cat_enum = EmergencyType.FOOD_WATER
+
+        existing = (await session.execute(select(Incident).where(Incident.notes == item["notes"]))).scalar_one_or_none()
+        if existing is None:
+            session.add(
+                Incident(
+                    category=cat_enum,
+                    status=CitizenStatus.PENDING if i % 2 == 0 else CitizenStatus.DISPATCHED,
+                    location=point_wkt(item["lat"], item["lng"]),
+                    accuracy=5.0,
+                    notes=item["notes"],
+                    created_at=datetime.now(timezone.utc) - timedelta(minutes=i * 5),
+                )
+            )
+
+        existing_sos = (await session.execute(select(CitizenSOS).where(CitizenSOS.phone_number == item["phone"]))).scalar_one_or_none()
+        if existing_sos is None:
+            session.add(
+                CitizenSOS(
+                    phone_number=item["phone"],
+                    emergency_type=cat_enum,
+                    location=point_wkt(item["lat"], item["lng"]),
+                    lat=item["lat"],
+                    lng=item["lng"],
+                    rain_rate=45.0,
+                    risk_status="HIGH",
+                    status=CitizenStatus.PENDING if i % 2 == 0 else CitizenStatus.DISPATCHED,
+                    timestamp=datetime.now(timezone.utc) - timedelta(minutes=i * 5),
                 )
             )
 
 
 async def clear_demo_data(session: AsyncSession) -> None:
-    for model_cls in (CitizenSOS, InundationZone, IoTWaterGauge, RescueUnit, Shelter, User):
+    """Clear demo records prior to seeding."""
+    for model_cls in (Incident, SensorTelemetry, Officer, FloodZone, CitizenSOS, IoTWaterGauge, User):
         try:
             await session.execute(model_cls.__table__.delete())
         except Exception:
@@ -312,23 +269,20 @@ async def seed_all(clear_existing: bool = True) -> None:
     async with AsyncSessionLocal() as session:
         if clear_existing:
             await clear_demo_data(session)
-        await seed_users(session)
-        await seed_gauges(session)
-        await seed_inundation_zones(session)
-        await seed_rescue_units(session)
-        await seed_sos_records(session)
-        await seed_shelters(session)
+        await seed_officers(session)
+        await seed_sensors(session)
         await seed_flood_zones(session)
+        await seed_incidents(session)
         await session.commit()
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Seed demo data for SurakshaGrid")
+    parser = argparse.ArgumentParser(description="Seed synthetic PostGIS demo data for SurakshaGrid EOC Dashboard")
     parser.add_argument("--keep-existing", action="store_true", help="Merge demo records without clearing existing ones")
     args = parser.parse_args()
 
     asyncio.run(seed_all(clear_existing=not args.keep_existing))
-    print("SurakshaGrid demo data seeded successfully.")
+    print("✓ SurakshaGrid PostGIS demo data seeded successfully.")
 
 
 if __name__ == "__main__":

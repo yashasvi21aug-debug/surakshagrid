@@ -31,6 +31,14 @@ class SpatialCacheManager:
         """Cache active flood polygons."""
         self._flood_polygon_cache[key] = data
 
+    def get_polygons(self, key: str = "active_flood_polygons") -> Any | None:
+        """Alias for get_flood_polygons."""
+        return self.get_flood_polygons(key)
+
+    def set_polygons(self, data: Any, key: str = "active_flood_polygons") -> None:
+        """Alias for set_flood_polygons."""
+        self.set_flood_polygons(data, key)
+
     def get_sensors(self, key: str = "water_sensors") -> Any | None:
         """Get cached water sensors."""
         return self._sensor_cache.get(key)

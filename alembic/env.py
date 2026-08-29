@@ -1,13 +1,10 @@
+import os
 from logging.config import fileConfig
-from sqlalchemy import engine_from_config, pool
+from sqlalchemy import create_engine, pool
 from alembic import context
 
 from app.models.base import Base
-import app.models.spatial_models
-import app.models.user
-import app.models.incident
-import app.models.flood_zone
-import app.models.route_log
+import app.models  # Import all canonical models for PostGIS table & index detection
 
 config = context.config
 if config.config_file_name:
@@ -16,8 +13,18 @@ if config.config_file_name:
 target_metadata = Base.metadata
 
 
+def get_database_url() -> str:
+    """Retrieve and sanitize DATABASE_URL environment variable for Alembic migration compatibility."""
+    url = os.getenv("DATABASE_URL") or config.get_main_option("sqlalchemy.url") or ""
+    if url.startswith("postgres://"):
+        url = url.replace("postgres://", "postgresql://", 1)
+    if "+asyncpg" in url:
+        url = url.replace("+asyncpg", "")
+    return url
+
+
 def run_migrations_offline() -> None:
-    url = config.get_main_option("sqlalchemy.url")
+    url = get_database_url()
     context.configure(
         url=url,
         target_metadata=target_metadata,
@@ -29,12 +36,11 @@ def run_migrations_offline() -> None:
 
 
 def run_migrations_online() -> None:
-    connectable = engine_from_config(
-        config.get_section(config.config_ini_section, {}),
-        prefix="sqlalchemy.",
-        poolclass=pool.NullPool,
-    )
-    with connectable.connect() as connection:
+    db_url = get_database_url()
+    config.set_main_option("sqlalchemy.url", db_url)
+
+    engine = create_engine(db_url, poolclass=pool.NullPool)
+    with engine.connect() as connection:
         context.configure(connection=connection, target_metadata=target_metadata)
         with context.begin_transaction():
             context.run_migrations()

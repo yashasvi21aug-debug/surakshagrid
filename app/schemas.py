@@ -5,7 +5,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from app.models.gis_models import CitizenStatus, EmergencyType
+from app.models import CitizenStatus, EmergencyType
 
 
 def sanitize_text(value: str) -> str:
@@ -19,21 +19,46 @@ def sanitize_text(value: str) -> str:
 
 class SOSCreateRequest(BaseModel):
     phone: str = Field(..., min_length=8, max_length=32)
-    emergencyType: EmergencyType = Field(..., alias="emergencyType")
-    lat: float = Field(..., ge=-90.0, le=90.0)
-    lng: float = Field(..., ge=-180.0, le=180.0)
+    category: EmergencyType = Field(default=EmergencyType.CRITICAL_TRAPPED)
+    latitude: float | None = Field(default=None, ge=-90.0, le=90.0)
+    longitude: float | None = Field(default=None, ge=-180.0, le=180.0)
+    accuracy: float | None = Field(default=None, ge=0.0)
+    notes: str | None = Field(default=None, max_length=500)
+
+    # Aliases / Legacy fields for backward compatibility
+    emergencyType: EmergencyType | None = Field(default=None)
+    lat: float | None = Field(default=None, ge=-90.0, le=90.0)
+    lng: float | None = Field(default=None, ge=-180.0, le=180.0)
     rainRate: float | None = Field(default=None, ge=0.0)
 
     model_config = ConfigDict(populate_by_name=True)
 
     @field_validator("phone")
     @classmethod
-    def validate_phone(cls, value: str) -> str:
+    def validate_phone(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
         clean_val = sanitize_text(value)
         digits = "".join(ch for ch in clean_val if ch.isdigit())
         if len(digits) < 8:
             raise ValueError("phone must contain at least 8 digits")
         return clean_val
+
+    @model_validator(mode="before")
+    @classmethod
+    def alias_sos_fields(cls, values: Any) -> Any:
+        if isinstance(values, dict):
+            if "emergencyType" in values and ("category" not in values or values.get("category") is None):
+                values["category"] = values["emergencyType"]
+            if "lat" in values and ("latitude" not in values or values.get("latitude") is None):
+                values["latitude"] = values["lat"]
+            if "lng" in values and ("longitude" not in values or values.get("longitude") is None):
+                values["longitude"] = values["lng"]
+            if "latitude" in values and ("lat" not in values or values.get("lat") is None):
+                values["lat"] = values["latitude"]
+            if "longitude" in values and ("lng" not in values or values.get("lng") is None):
+                values["lng"] = values["longitude"]
+        return values
 
 
 class SOSStatusUpdate(BaseModel):
@@ -105,6 +130,8 @@ class FloodRiskRequest(BaseModel):
                 values["upstream_discharge"] = values["discharge"]
             if "distance_to_drainage" in values and "distance_to_waterway" not in values:
                 values["distance_to_waterway"] = values["distance_to_drainage"]
+            if "soil_saturation" in values and isinstance(values["soil_saturation"], (int, float)) and 0.0 < values["soil_saturation"] <= 1.0:
+                values["soil_saturation"] = values["soil_saturation"] * 100.0
         return values
 
 
@@ -147,3 +174,17 @@ class EvasiveRouteResponse(BaseModel):
     estimated_travel_time_mins: float = Field(..., ge=0.0)
     flood_zones_considered: int = Field(default=0)
     intersections_avoided: int = Field(default=0)
+
+
+class LoginRequest(BaseModel):
+    officer_id: str | None = None
+    email: str | None = None
+    badge_id: str | None = None
+    password: str = Field(..., min_length=1)
+
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    officer_id: str
+    role: str
