@@ -1,0 +1,231 @@
+/* SurakshaGrid Citizen Emergency Portal Stylesheet */
+
+.citizen-shell {
+  width: min(calc(100% - 24px), 680px);
+  min-height: 100vh;
+  margin: auto;
+  padding: 20px 0 28px;
+}
+
+.intro-section {
+  padding: 34px 0 26px;
+}
+
+.portal-title {
+  margin: 8px 0 14px;
+  font-family: "Arial Narrow", "Trebuchet MS", sans-serif;
+  font-size: clamp(42px, 11vw, 70px);
+  line-height: 0.88;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.copy-text {
+  max-width: 500px;
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+/* Triage Radio Cards */
+.triage-list {
+  display: grid;
+  gap: 10px;
+}
+
+.triage-card {
+  display: block;
+  border: 1px solid var(--border-line);
+  background: rgba(16, 28, 33, 0.94);
+  cursor: pointer;
+  transition: border-color 0.2s, background-color 0.2s;
+}
+
+.triage-card:focus-within {
+  outline: 2px solid var(--brand-red);
+  outline-offset: 2px;
+}
+
+.triage-card.selected {
+  border-color: var(--brand-red);
+  background: rgba(255, 91, 91, 0.13);
+}
+
+.triage-card input[type="radio"] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+.triage-content {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  padding: 17px;
+}
+
+.triage-number {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 48px;
+  height: 48px;
+  background: rgba(255, 91, 91, 0.14);
+  color: var(--brand-red);
+  font-family: monospace;
+  font-size: 19px;
+  font-weight: 800;
+}
+
+.triage-card.selected .triage-number {
+  background: var(--brand-red);
+  color: #ffffff;
+}
+
+.triage-title {
+  display: block;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.triage-code {
+  display: block;
+  margin-top: 5px;
+  color: var(--text-muted);
+  font-family: monospace;
+  font-size: 11px;
+}
+
+/* Inputs & Location Indicator */
+.inputs-grid {
+  display: grid;
+  gap: 15px;
+  margin-top: 25px;
+}
+
+@media (min-width: 600px) {
+  .inputs-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.input-field {
+  display: block;
+  width: 100%;
+  margin-top: 8px;
+  border: 1px solid var(--border-line);
+  background: var(--panel-bg);
+  padding: 14px;
+  color: var(--text-main);
+  font: 16px inherit;
+}
+
+.input-field:focus {
+  outline: 2px solid var(--brand-red);
+  outline-offset: 2px;
+}
+
+.location-indicator {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin-top: 18px;
+  color: var(--brand-green);
+  font-family: monospace;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.location-dot {
+  width: 9px;
+  height: 9px;
+  flex: none;
+  margin-top: 5px;
+  border-radius: 50%;
+  background: var(--brand-amber);
+}
+
+.location-dot.locked {
+  background: var(--brand-green);
+}
+
+.location-dot.fallback {
+  background: var(--brand-amber);
+}
+
+.dispatch-btn {
+  width: 100%;
+  margin-top: 10px;
+  border: 0;
+  background: var(--brand-red);
+  padding: 17px 20px;
+  color: #ffffff;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  transition: background 0.2s ease;
+}
+
+.dispatch-btn:hover {
+  background: #ff7474;
+}
+
+.dispatch-btn:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+/* Success Modal */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(0, 0, 0, 0.82);
+}
+
+.modal-backdrop.visible {
+  display: flex;
+}
+
+.modal-card {
+  width: min(100%, 390px);
+  border: 1px solid rgba(57, 211, 152, 0.55);
+  background: var(--panel-bg);
+  padding: 28px 22px 22px;
+  text-align: center;
+  box-shadow: 0 20px 70px rgba(0, 0, 0, 0.7);
+}
+
+.modal-icon {
+  display: grid;
+  place-items: center;
+  width: 54px;
+  height: 54px;
+  margin: auto;
+  border-radius: 50%;
+  background: rgba(57, 211, 152, 0.14);
+  color: var(--brand-green);
+  font-weight: 900;
+}
+
+.ticket-box {
+  margin: 20px 0;
+  border: 1px solid var(--border-line);
+  background: #0c171b;
+  padding: 13px;
+}
+
+.ticket-value {
+  margin: 0;
+  color: var(--brand-green);
+  font-family: monospace;
+  font-weight: 800;
+  font-size: 22px;
+}

@@ -1,0 +1,82 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}SurakshaGrid — Digital Twin EOC Dashboard{% endblock %}
+
+{% block styles %}
+<link rel="stylesheet" href="/static/css/dashboard.css" />
+{% endblock %}
+
+{% block content %}
+<div class="dashboard-root">
+  <!-- High-Density Telemetry KPI Ribbon -->
+  <div class="telemetry-ribbon">
+    <div class="kpi-chip">
+      <span class="kpi-label">BASIN PRECIPITATION</span>
+      <div class="kpi-value text-[#f0f6fc]">0.0 <span class="text-[11px] text-[#8b949e] font-normal">mm/h</span></div>
+    </div>
+    <div class="kpi-chip">
+      <span class="kpi-label">HYDROLOGICAL RISK</span>
+      <div class="kpi-value text-[#3fb950]">STABLE / MONITORED</div>
+    </div>
+    <div class="kpi-chip">
+      <span class="kpi-label">ACTIVE INCIDENT QUEUE</span>
+      <div id="active-count" class="kpi-value text-[#f85149]">0 Active Tickets</div>
+    </div>
+    <div class="kpi-chip">
+      <span class="kpi-label">ESTIMATED WATER RISE</span>
+      <div class="kpi-value text-[#58a6ff]">0.00 <span class="text-[11px] text-[#8b949e] font-normal">meters</span></div>
+    </div>
+  </div>
+
+  <!-- Workspace Split View -->
+  <div class="workspace-split">
+    <!-- Left Main Canvas: GIS Map (70%) -->
+    <div class="map-canvas-container">
+      <!-- Floating Layer Control Bar -->
+      <div class="floating-layer-bar">
+        <button id="toggle-inundation" type="button" class="tactical-btn">
+          <i class="fa-solid fa-water text-[10px] text-[#f85149]"></i>
+          <span>SAR Inundation Vector</span>
+          <span class="w-1.5 h-1.5 rounded-full bg-[#f85149]"></span>
+        </button>
+        <button id="toggle-routes" type="button" class="tactical-btn">
+          <i class="fa-solid fa-route text-[10px] text-[#3fb950]"></i>
+          <span>Safe Corridors</span>
+        </button>
+        <button id="toggle-gauges" type="button" class="tactical-btn">
+          <i class="fa-solid fa-gauge-high text-[10px] text-[#58a6ff]"></i>
+          <span>IoT Gauges</span>
+        </button>
+      </div>
+
+      <!-- Edge-to-Edge Map Viewport -->
+      <div id="map"></div>
+    </div>
+
+    <!-- Right Sidebar: Incident Queue & Unit Dispatch (30%) -->
+    <aside class="incident-sidebar">
+      <div class="sidebar-header">
+        <span class="flex items-center gap-1.5">
+          <i class="fa-solid fa-list-check text-[10px] text-[#58a6ff]"></i>
+          LIVE INCIDENT DISPATCH QUEUE
+        </span>
+        <span class="text-[10px] text-[#3fb950] font-normal flex items-center gap-1">
+          <span class="status-dot-live"></span> ACTIVE
+        </span>
+      </div>
+
+      <!-- Scrollable Dense Queue Feed -->
+      <div id="incident-queue" class="queue-feed">
+        <div id="queue-empty" class="text-[#8b949e] text-center py-12 font-mono text-xs border border-dashed border-[#30363d] rounded p-4">
+          <i class="fa-solid fa-shield-cat text-lg mb-2 text-[#30363d] block"></i>
+          No active emergency tickets in sector queue.
+        </div>
+      </div>
+    </aside>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script type="module" src="/static/js/dashboard.js"></script>
+{% endblock %}

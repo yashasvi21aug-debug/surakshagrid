@@ -6,130 +6,146 @@ from pathlib import Path
 import joblib
 import numpy as np
 import pandas as pd
-import xgboost as xgb
-from sklearn.model_selection import train_test_split
+from sklearn.ensemble import GradientBoostingClassifier, GradientBoostingRegressor
 from sklearn.metrics import mean_squared_error, roc_auc_score
+from sklearn.model_selection import train_test_split
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
 
-
-MODEL_DIR = Path(__file__).resolve().parent
+ML_DIR = Path(__file__).resolve().parent
+MODEL_DIR = ML_DIR / "models"
 MODEL_PATH = MODEL_DIR / "inundation_model.joblib"
+CLASSIFIER_JSON = MODEL_DIR / "inundation_classifier.json"
+REGRESSOR_JSON = MODEL_DIR / "water_rise_regressor.json"
+
+RANDOM_SEED = 42
+
+FEATURE_COLUMNS = [
+    "elevation",
+    "precipitation_rate",
+    "soil_saturation",
+    "distance_to_drainage",
+    "upstream_discharge",
+]
 
 
-def generate_synthetic_dataset(n_samples: int = 2000) -> pd.DataFrame:
-    rng = np.random.default_rng(42)
+def generate_synthetic_hydrological_data(n_samples: int = 4000) -> pd.DataFrame:
+    """Generate realistic hydro-meteorological observations for the Yamuna-Hindon basin."""
+    rng = np.random.default_rng(RANDOM_SEED)
 
-    precipitation_mm_h = rng.uniform(0, 120, size=n_samples)
-    upstream_river_discharge_m3s = rng.uniform(30, 700, size=n_samples)
-    soil_moisture_percentage = rng.uniform(20, 95, size=n_samples)
-    elevation_m = rng.uniform(2, 120, size=n_samples)
-    drainage_capacity_index = rng.uniform(0.1, 1.0, size=n_samples)
+    precipitation_rate = rng.gamma(shape=2.2, scale=18.0, size=n_samples).clip(0, 180)
+    upstream_discharge = rng.lognormal(mean=np.log(260), sigma=0.55, size=n_samples).clip(30, 1600)
+    soil_saturation = rng.uniform(20, 100, size=n_samples)
+    elevation = rng.uniform(2, 180, size=n_samples)
+    distance_to_drainage = rng.uniform(10, 5000, size=n_samples)
 
-    flood_score = (
-        0.45 * (precipitation_mm_h / 120)
-        + 0.35 * (upstream_river_discharge_m3s / 700)
-        + 0.25 * (soil_moisture_percentage / 100)
-        + 0.15 * (1 - elevation_m / 120)
-        + 0.20 * (1 - drainage_capacity_index)
+    norm_rain = precipitation_rate / 180.0
+    norm_dis = upstream_discharge / 1600.0
+    norm_soil = soil_saturation / 100.0
+    norm_elev = 1.0 - elevation / 180.0
+    norm_dist = 1.0 - distance_to_drainage / 5000.0
+
+    hazard_score = (
+        0.38 * norm_rain
+        + 0.28 * norm_dis
+        + 0.18 * norm_soil
+        + 0.10 * norm_elev
+        + 0.06 * norm_dist
     )
-    flood_score = np.clip(flood_score, 0, 1)
 
-    flood_inundation_risk = np.clip(flood_score + rng.normal(0, 0.08, size=n_samples), 0, 1)
-    water_rise_meters = (
-        0.8 * flood_inundation_risk * 5.0
-        + 0.2 * (100 - elevation_m) / 100 * 4.0
-        + 0.15 * precipitation_mm_h / 50
+    risk_prob = 1.0 / (1.0 + np.exp(-12.0 * (hazard_score - 0.42)))
+    inundated = (risk_prob + rng.normal(0, 0.06, n_samples) >= 0.5).astype(np.int32)
+    water_rise = np.clip(
+        0.15
+        + 5.4 * risk_prob
+        + 0.7 * norm_rain
+        + 0.45 * norm_dis
+        + rng.normal(0, 0.12, n_samples),
+        0.0,
+        8.0,
     )
-    water_rise_meters = np.clip(water_rise_meters, 0, 8)
 
-    dataset = pd.DataFrame(
+    return pd.DataFrame(
         {
-            "precipitation_mm_h": precipitation_mm_h,
-            "upstream_river_discharge_m3s": upstream_river_discharge_m3s,
-            "soil_moisture_percentage": soil_moisture_percentage,
-            "elevation_m": elevation_m,
-            "drainage_capacity_index": drainage_capacity_index,
-            "flood_inundation_risk": flood_inundation_risk,
-            "water_rise_meters": water_rise_meters,
+            "elevation": elevation,
+            "precipitation_rate": precipitation_rate,
+            "soil_saturation": soil_saturation,
+            "distance_to_drainage": distance_to_drainage,
+            "upstream_discharge": upstream_discharge,
+            # Backward compatibility aliases
+            "rain_rate": precipitation_rate,
+            "distance_to_waterway": distance_to_drainage,
+            "inundated": inundated,
+            "water_rise": water_rise,
         }
     )
-    return dataset
 
 
-def train_models() -> tuple[xgb.XGBClassifier, xgb.XGBRegressor, dict]:
-    df = generate_synthetic_dataset()
-    feature_cols = [
-        "precipitation_mm_h",
-        "upstream_river_discharge_m3s",
-        "soil_moisture_percentage",
-        "elevation_m",
-        "drainage_capacity_index",
-    ]
+def train_inundation_models(
+    df: pd.DataFrame | None = None,
+) -> tuple[Pipeline, Pipeline, dict[str, float]]:
+    dataset = df if df is not None else generate_synthetic_hydrological_data()
+    X = dataset[FEATURE_COLUMNS]
+    y_clf = dataset["inundated"]
+    y_reg = dataset["water_rise"]
 
-    X = df[feature_cols]
-    y_risk = df["flood_inundation_risk"]
-    y_depth = df["water_rise_meters"]
-
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y_risk, test_size=0.2, random_state=42
+    X_train_c, X_test_c, y_train_c, y_test_c = train_test_split(
+        X, y_clf, test_size=0.2, random_state=RANDOM_SEED, stratify=y_clf
     )
-    X_train_d, X_test_d, y_depth_train, y_depth_test = train_test_split(
-        X, y_depth, test_size=0.2, random_state=42
+    X_train_r, X_test_r, y_train_r, y_test_r = train_test_split(
+        X, y_reg, test_size=0.2, random_state=RANDOM_SEED
     )
 
-    classifier = xgb.XGBClassifier(
-        objective="binary:logistic",
-        eval_metric="auc",
-        n_estimators=300,
-        max_depth=5,
-        learning_rate=0.08,
-        subsample=0.9,
-        colsample_bytree=0.9,
-        random_state=42,
-    )
-    classifier.fit(X_train, y_train)
+    clf_pipeline = Pipeline([
+        ("scaler", StandardScaler()),
+        ("classifier", GradientBoostingClassifier(n_estimators=100, max_depth=4, random_state=RANDOM_SEED)),
+    ])
+    clf_pipeline.fit(X_train_c, y_train_c)
 
-    regressor = xgb.XGBRegressor(
-        objective="reg:squarederror",
-        n_estimators=300,
-        max_depth=5,
-        learning_rate=0.08,
-        subsample=0.9,
-        colsample_bytree=0.9,
-        random_state=42,
-    )
-    regressor.fit(X_train_d, y_depth_train)
-
-    risk_proba = classifier.predict_proba(X_test)[:, 1]
-    risk_auc = roc_auc_score(y_test.round(0), risk_proba)
-    depth_rmse = mean_squared_error(y_depth_test, regressor.predict(X_test_d), squared=False)
+    reg_pipeline = Pipeline([
+        ("scaler", StandardScaler()),
+        ("regressor", GradientBoostingRegressor(n_estimators=100, max_depth=4, random_state=RANDOM_SEED)),
+    ])
+    reg_pipeline.fit(X_train_r, y_train_r)
 
     metrics = {
-        "risk_auc": float(risk_auc),
-        "water_rise_rmse_m": float(depth_rmse),
-        "feature_columns": feature_cols,
+        "classifier_auc": float(roc_auc_score(y_test_c, clf_pipeline.predict_proba(X_test_c)[:, 1])),
+        "regressor_rmse": float(mean_squared_error(y_test_r, reg_pipeline.predict(X_test_r)) ** 0.5),
     }
-    return classifier, regressor, metrics
+
+    return clf_pipeline, reg_pipeline, metrics
 
 
-def save_models(classifier: xgb.XGBClassifier, regressor: xgb.XGBRegressor) -> None:
-    payload = {
-        "classifier": classifier,
-        "regressor": regressor,
-        "feature_columns": [
-            "precipitation_mm_h",
-            "upstream_river_discharge_m3s",
-            "soil_moisture_percentage",
-            "elevation_m",
-            "drainage_capacity_index",
-        ],
+def save_serialized_model(clf_pipeline: Pipeline, reg_pipeline: Pipeline) -> None:
+    MODEL_DIR.mkdir(parents=True, exist_ok=True)
+    bundle = {
+        "classifier": clf_pipeline,
+        "regressor": reg_pipeline,
+        "feature_columns": FEATURE_COLUMNS,
     }
-    joblib.dump(payload, MODEL_PATH)
+    joblib.dump(bundle, MODEL_PATH)
+
+    # Clean up legacy static JSON files if present
+    for json_file in (CLASSIFIER_JSON, REGRESSOR_JSON):
+        if json_file.is_file():
+            try:
+                json_file.unlink()
+            except Exception:
+                pass
+
+
+def compile_models() -> dict[str, object]:
+    clf_pipeline, reg_pipeline, metrics = train_inundation_models()
+    save_serialized_model(clf_pipeline, reg_pipeline)
+    return {
+        "status": "compiled",
+        "model_path": str(MODEL_PATH),
+        **metrics,
+    }
 
 
 def main() -> None:
-    classifier, regressor, metrics = train_models()
-    save_models(classifier, regressor)
-    print(json.dumps({"status": "trained", "model_path": str(MODEL_PATH), **metrics}, indent=2))
+    print(json.dumps(compile_models(), indent=2))
 
 
 if __name__ == "__main__":

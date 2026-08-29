@@ -5,12 +5,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.routes.auth import OfficerPrincipal, require_role
-from app.services.routing import FloodAvoidanceRoutingService, RoutingError
-from app.services.routing_service import RoutingService
+from app.services.routing import FloodAvoidanceRoutingService, RoutingError, RoutingService
 
 router = APIRouter(prefix="/api/v1/routes", tags=["routes"])
 routing_service = RoutingService()
-evacuation_routing_service = FloodAvoidanceRoutingService()
+evacuation_routing_service = routing_service
 
 
 def _coordinate(value: object, field_name: str) -> tuple[float, float]:

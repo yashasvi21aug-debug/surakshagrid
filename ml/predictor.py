@@ -1,109 +1,86 @@
 from __future__ import annotations
 
-from pathlib import Path
+import inspect
+import logging
+from typing import Any
 
-import joblib
-import numpy as np
-import pandas as pd
-import xgboost as xgb
+from app.schemas import FloodRiskRequest
+from app.services.ml_service import ml_service
 
-MODEL_PATH = Path(__file__).resolve().parent / "inundation_model.joblib"
-MODEL_DIR = Path(__file__).resolve().parent / "models"
-CLASSIFIER_MODEL_PATH = MODEL_DIR / "inundation_classifier.json"
-REGRESSOR_MODEL_PATH = MODEL_DIR / "water_rise_regressor.json"
-FEATURE_COLUMNS = [
-    "precipitation_mm_h",
-    "upstream_river_discharge_m3s",
-    "soil_moisture_percentage",
-    "elevation_m",
-    "drainage_capacity_index",
-]
+logger = logging.getLogger(__name__)
+
+
+def preload_static_models() -> bool:
+    return True
 
 
 class FloodRiskPredictor:
-    def __init__(self, model_path: str | Path = MODEL_PATH) -> None:
-        self.model_path = Path(model_path)
-        self.model_bundle = None
-        self.classifier = None
-        self.regressor = None
-        self.feature_columns = FEATURE_COLUMNS
+    """Predictor delegate using app.services.ml_service.MLInferenceService."""
 
-    def _load_model(self) -> None:
-        if self.model_bundle is not None:
-            return
-
-        if CLASSIFIER_MODEL_PATH.is_file() and REGRESSOR_MODEL_PATH.is_file():
-            self.classifier = xgb.XGBClassifier()
-            self.classifier.load_model(str(CLASSIFIER_MODEL_PATH))
-            self.regressor = xgb.XGBRegressor()
-            self.regressor.load_model(str(REGRESSOR_MODEL_PATH))
-            self.feature_columns = [
-                "rain_rate",
-                "upstream_discharge",
-                "soil_moisture",
-                "elevation",
-                "drainage_index",
-            ]
-            self.model_bundle = {"format": "xgboost_json"}
-            return
-
-        if not self.model_path.is_file():
-            raise FileNotFoundError(
-                "Flood model artifacts are missing. Run 'python -m ml.train_and_save' first."
-            )
-
-        self.model_bundle = joblib.load(self.model_path)
-        self.classifier = self.model_bundle["classifier"]
-        self.regressor = self.model_bundle["regressor"]
-        self.feature_columns = self.model_bundle.get("feature_columns", FEATURE_COLUMNS)
+    def predict_risk(
+        self,
+        lat: float,
+        lng: float,
+        rain_rate: float,
+        discharge: float,
+        soil_moisture: float | None = None,
+        elevation: float | None = None,
+        drainage_index: float | None = None,
+        distance_to_waterway: float | None = None,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        req = FloodRiskRequest(
+            lat=lat,
+            lng=lng,
+            precipitation_rate=rain_rate,
+            upstream_discharge=discharge,
+            soil_saturation=soil_moisture if soil_moisture is not None else 50.0,
+            elevation=elevation if elevation is not None else max(2.0, 90.0 - abs(lat) * 2.5),
+            distance_to_waterway=distance_to_waterway if distance_to_waterway is not None else 500.0,
+        )
+        res = ml_service.predict_flood_risk(req)
+        res_dict = res.model_dump()
+        res_dict["risk_probability"] = res.inundation_probability
+        res_dict["water_rise_meters"] = res.estimated_water_rise_meters
+        res_dict["status"] = res.severity_classification
+        return res_dict
 
     def preload_static_models(self) -> bool:
-        if not (CLASSIFIER_MODEL_PATH.is_file() and REGRESSOR_MODEL_PATH.is_file()):
-            return False
-        self._load_model()
         return True
-
-    def predict_risk(self, lat: float, lng: float, rain_rate: float, discharge: float) -> dict:
-        self._load_model()
-        # Synthetic geospatial calibration: low elevation and wet conditions increase inundation risk.
-        elevation_proxy = max(2.0, 80.0 - abs(lat) * 2.4)
-        soil_moisture = min(98.0, max(35.0, 50.0 + rain_rate * 0.9))
-        drainage_index = max(0.1, min(1.0, 0.85 - (discharge / 1000.0) * 0.35))
-
-        feature_values = {
-            "rain_rate": float(rain_rate),
-            "upstream_discharge": float(discharge),
-            "soil_moisture": float(soil_moisture),
-            "elevation": float(elevation_proxy),
-            "drainage_index": float(drainage_index),
-            "precipitation_mm_h": float(rain_rate),
-            "upstream_river_discharge_m3s": float(discharge),
-            "soil_moisture_percentage": float(soil_moisture),
-            "elevation_m": float(elevation_proxy),
-            "drainage_capacity_index": float(drainage_index),
-        }
-        input_df = pd.DataFrame([{column: feature_values[column] for column in self.feature_columns}])
-
-        risk_probability = float(self.classifier.predict_proba(input_df[self.feature_columns])[0, 1])
-        water_rise = float(self.regressor.predict(input_df[self.feature_columns])[0])
-
-        should_flag = risk_probability >= 0.6 or water_rise >= 1.5
-        return {
-            "lat": float(lat),
-            "lng": float(lng),
-            "risk_probability": round(risk_probability, 6),
-            "water_rise_meters": round(water_rise, 4),
-            "should_flag_flood_polygon": bool(should_flag),
-            "status": "HIGH" if should_flag else "MODERATE" if risk_probability >= 0.35 else "LOW",
-        }
 
 
 _predictor = FloodRiskPredictor()
 
 
-def preload_static_models() -> bool:
-    return _predictor.preload_static_models()
+def predict_risk(
+    lat: float,
+    lng: float,
+    rain_rate: float,
+    discharge: float,
+    soil_moisture: float | None = None,
+    elevation: float | None = None,
+    drainage_index: float | None = None,
+    distance_to_waterway: float | None = None,
+    **kwargs: Any,
+) -> dict[str, Any]:
+    """Delegate function to _predictor instance supporting test monkeypatching."""
+    kwargs_passed: dict[str, Any] = {}
+    if soil_moisture is not None:
+        kwargs_passed["soil_moisture"] = soil_moisture
+    if elevation is not None:
+        kwargs_passed["elevation"] = elevation
+    if drainage_index is not None:
+        kwargs_passed["drainage_index"] = drainage_index
+    if distance_to_waterway is not None:
+        kwargs_passed["distance_to_waterway"] = distance_to_waterway
 
-
-def predict_risk(lat: float, lng: float, rain_rate: float, discharge: float) -> dict:
-    return _predictor.predict_risk(lat, lng, rain_rate, discharge)
+    try:
+        sig = inspect.signature(_predictor.predict_risk)
+        params = sig.parameters
+        if any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values()):
+            return _predictor.predict_risk(lat, lng, rain_rate, discharge, **kwargs_passed)
+        
+        valid_kwargs = {k: v for k, v in kwargs_passed.items() if k in params}
+        return _predictor.predict_risk(lat, lng, rain_rate, discharge, **valid_kwargs)
+    except Exception:
+        return _predictor.predict_risk(lat, lng, rain_rate, discharge)

@@ -1,0 +1,36 @@
+# Python & pytest build artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+htmlcov/
+*.egg-info/
+.eggs/
+
+# Environments & IDEs
+.venv/
+venv/
+ENV/
+env/
+.idea/
+.vscode/
+
+# Local databases & logs
+*.db
+*.sqlite3
+*.log
+scratch/
+
+# Version control & cloud provider legacy files
+.git/
+.gitignore
+.vercel/
+vercel.json
+.vercelignore
+
+# Documentation & local dev tests
+tests/
+docs/
+*.md
+!README.md

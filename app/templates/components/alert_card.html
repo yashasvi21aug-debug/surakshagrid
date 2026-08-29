@@ -1,0 +1,8 @@
+<div class="incident-card p-2.5 rounded bg-slate-900 border border-red-500/60 font-mono text-[11px] cursor-pointer hover:bg-slate-800 transition-all">
+  <div class="flex justify-between font-bold text-red-400">
+    <span>{{ ticket_id | default("TICK-LIVE") }}</span>
+    <span class="priority-tag">PRIORITY 1</span>
+  </div>
+  <div class="text-slate-300 mt-1">{{ details | default("Emergency flood rescue request") }}</div>
+  <div class="text-slate-500 text-[10px] mt-1">{{ contact | default("+91-EMERGENCY") }}</div>
+</div>

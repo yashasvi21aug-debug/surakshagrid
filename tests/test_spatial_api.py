@@ -21,7 +21,10 @@ async def test_inundation_zones_serialize_postgis_geojson_string(client, fake_db
     response = await client.get("/api/v1/spatial/inundation-zones")
 
     assert response.status_code == 200
-    feature = response.json()["features"][0]
+    body = response.json()
+    assert body["type"] == "FeatureCollection"
+    assert "features" in body
+    feature = body["features"][0]
     assert feature["geometry"]["type"] == "Polygon"
     assert feature["properties"]["zone_name"] == "Yamuna Critical Sector"
     assert feature["properties"]["risk_score"] == pytest.approx(0.9)
@@ -44,3 +47,54 @@ async def test_nearby_sos_returns_coordinates_and_distance(client, fake_db, make
     assert item["lat"] == pytest.approx(28.6321)
     assert item["lng"] == pytest.approx(77.4446)
     assert item["distance_m"] == pytest.approx(143.75)
+
+
+@pytest.mark.asyncio
+async def test_evasive_route_endpoint_post(client, fake_db):
+    fake_db.zones = []
+    fake_db.scalar_values = []
+
+    payload = {
+        "origin": [77.4446, 28.6321],
+        "destination": [77.5000, 28.6500],
+    }
+
+    response = await client.post("/api/v1/spatial/evasive-route", json=payload)
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] in ("safe", "rerouted")
+    assert data["safe_bypass_geojson"]["type"] == "LineString"
+    assert len(data["safe_bypass_geojson"]["coordinates"]) >= 2
+    assert data["distance_km"] > 0.0
+    assert data["estimated_travel_time_mins"] > 0.0
+
+
+@pytest.mark.asyncio
+async def test_evasive_route_endpoint_get(client, fake_db):
+    fake_db.zones = []
+    fake_db.scalar_values = []
+
+    params = {
+        "origin_lat": 28.6321,
+        "origin_lng": 77.4446,
+        "dest_lat": 28.6500,
+        "dest_lng": 77.5000,
+    }
+
+    response = await client.get("/api/v1/spatial/evasive-route", params=params)
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] in ("safe", "rerouted")
+    assert data["safe_bypass_geojson"]["type"] == "LineString"
+
+
+@pytest.mark.asyncio
+async def test_geojson_output_validity_for_spatial_endpoints(client, fake_db):
+    """Test GeoJSON FeatureCollection structure and point-in-polygon output validity."""
+    res = await client.get("/api/v1/spatial/inundation-zones")
+    assert res.status_code == 200
+    geojson_data = res.json()
+    assert geojson_data["type"] == "FeatureCollection"
+    assert isinstance(geojson_data["features"], list)

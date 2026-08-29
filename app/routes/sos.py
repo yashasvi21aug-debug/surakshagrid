@@ -7,7 +7,7 @@ from geoalchemy2 import functions as func
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database import get_db
+from app.database import get_async_db
 from app.models.gis_models import CitizenSOS, CitizenStatus, EmergencyType
 from app.schemas import NearbySOSQuery, SOSCreateRequest, SOSListQuery, SOSResponse, SOSStatusUpdate
 from app.websocket_manager import manager
@@ -18,8 +18,9 @@ router = APIRouter(prefix="/api/v1/sos", tags=["sos"])
 @router.post("/", response_model=SOSResponse, status_code=status.HTTP_201_CREATED)
 async def create_sos(
     payload: SOSCreateRequest,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ) -> SOSResponse:
+    """Trigger a new citizen emergency SOS alert, persist record, and broadcast event."""
     point_wkt = func.ST_SetSRID(func.ST_Point(payload.lng, payload.lat), 4326)
     incident = CitizenSOS(
         phone_number=payload.phone,
@@ -36,6 +37,7 @@ async def create_sos(
 
     incident_payload = {
         "event": "new_sos",
+        "type": "NEW_SOS_ALERT",
         "data": {
             "id": incident.id,
             "phone_number": incident.phone_number,
@@ -48,7 +50,7 @@ async def create_sos(
             "timestamp": incident.timestamp.isoformat(),
         },
     }
-    await manager.broadcast(incident_payload)
+    await manager.broadcast_to_rooms(incident_payload, ["dashboard", "responders"])
 
     return SOSResponse(
         id=incident.id,
@@ -63,6 +65,62 @@ async def create_sos(
     )
 
 
+@router.post("/{id}/acknowledge")
+async def acknowledge_sos(
+    id: str,
+    db: AsyncSession = Depends(get_async_db),
+) -> dict[str, Any]:
+    """Acknowledge & dispatch rescue response for an active SOS incident."""
+    incident = await db.get(CitizenSOS, id)
+    if incident is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="SOS incident not found")
+
+    incident.status = CitizenStatus.DISPATCHED
+    await db.commit()
+    await db.refresh(incident)
+
+    event = {
+        "event": "sos_acknowledged",
+        "type": "SOS_ACKNOWLEDGED",
+        "data": {
+            "id": incident.id,
+            "status": incident.status.value,
+            "phone_number": incident.phone_number,
+            "emergency_type": incident.emergency_type.value,
+        },
+    }
+    await manager.broadcast_to_rooms(event, ["dashboard", "responders", "citizens"])
+    return {"id": incident.id, "status": incident.status.value, "message": "Incident acknowledged and dispatched."}
+
+
+@router.post("/{id}/resolve")
+async def resolve_sos(
+    id: str,
+    db: AsyncSession = Depends(get_async_db),
+) -> dict[str, Any]:
+    """Mark an active SOS incident as resolved / rescued."""
+    incident = await db.get(CitizenSOS, id)
+    if incident is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="SOS incident not found")
+
+    incident.status = CitizenStatus.RESOLVED
+    await db.commit()
+    await db.refresh(incident)
+
+    event = {
+        "event": "sos_resolved",
+        "type": "SOS_RESOLVED",
+        "data": {
+            "id": incident.id,
+            "status": incident.status.value,
+            "phone_number": incident.phone_number,
+            "emergency_type": incident.emergency_type.value,
+        },
+    }
+    await manager.broadcast_to_rooms(event, ["dashboard", "responders", "citizens"])
+    return {"id": incident.id, "status": incident.status.value, "message": "Incident successfully resolved."}
+
+
 @router.get("/", response_model=dict[str, Any])
 async def list_sos(
     page: int = Query(default=1, ge=1),
@@ -71,8 +129,9 @@ async def list_sos(
     max_lat: float | None = Query(default=None, ge=-90, le=90),
     min_lng: float | None = Query(default=None, ge=-180, le=180),
     max_lng: float | None = Query(default=None, ge=-180, le=180),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ) -> dict[str, Any]:
+    """List SOS incidents with spatial bounding box filtering and pagination."""
     stmt = select(CitizenSOS)
     if min_lat is not None:
         stmt = stmt.where(func.ST_Y(CitizenSOS.location) >= min_lat)
@@ -125,8 +184,9 @@ async def list_sos(
 async def update_sos_status(
     id: str,
     payload: SOSStatusUpdate,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ) -> dict[str, Any]:
+    """Update status for backward compatibility."""
     incident = await db.get(CitizenSOS, id)
     if incident is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="SOS incident not found")
@@ -144,6 +204,6 @@ async def update_sos_status(
             "emergency_type": incident.emergency_type.value,
         },
     }
-    await manager.broadcast(event)
+    await manager.broadcast_to_rooms(event, ["dashboard", "responders", "citizens"])
 
     return {"id": incident.id, "status": incident.status.value}
