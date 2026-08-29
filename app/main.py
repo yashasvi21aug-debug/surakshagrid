@@ -29,6 +29,7 @@ from app.routes.ml import router as ml_router
 from app.routes.routes import router as routes_router
 from app.routes.sos import router as sos_router
 from app.routes.spatial import router as spatial_router
+from app.routes.telephony import router as telephony_router
 from app.routes.ws import router as ws_router
 from app.services.sentinel_hub import background_sentinel_ingestion_loop
 from app.services.weather import background_ingestion_loop, fetch_live_weather
@@ -177,6 +178,7 @@ app.include_router(auth_router)
 app.include_router(routes_router)
 app.include_router(sos_router)
 app.include_router(spatial_router)
+app.include_router(telephony_router)
 app.include_router(ws_router)
 
 

@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_async_db
 from app.models import CitizenSOS, FloodPolygon, SensorGauge
 from app.schemas import GeoJSONFeature, GeoJSONFeatureCollection
+from app.services.isochrone import isochrone_service
 from app.services.sar import sar_processor
 from app.services.spatial import postgis_service
 from app.services.spatial_cache import spatial_cache
@@ -20,6 +21,18 @@ from app.services.spatial_cache import spatial_cache
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/spatial", tags=["spatial"])
+
+
+@router.get("/isochrones", response_model=dict[str, Any])
+async def get_evacuation_isochrones(
+    camp_id: str | None = Query(default=None, description="Staging relief camp identifier"),
+    lat: float = Query(default=28.6590, ge=-90, le=90),
+    lng: float = Query(default=77.2490, ge=-180, le=180),
+    mode: str = Query(default="vehicle", description="Mode of travel: vehicle, amphibious, foot"),
+    db: AsyncSession = Depends(get_async_db),
+) -> dict[str, Any]:
+    """Calculate 5, 10, and 15-minute evacuation reachability isochrones clipped against PostGIS flood zones."""
+    return await isochrone_service.calculate_isochrones(lat, lng, mode, db)
 
 
 @router.get("/temporal-playback", response_model=dict[str, Any])
@@ -40,7 +53,7 @@ async def get_temporal_playback_snapshots(
 
     while current_dt <= end_dt:
         time_ratio = (current_dt - start_dt).total_seconds() / max(1.0, (end_dt - start_dt).total_seconds())
-        depth_mult = 0.3 + 1.2 * time_ratio  # Simulates rising floodwaters over 24-72h
+        depth_mult = 0.3 + 1.2 * time_ratio
 
         snapshots.append({
             "step_index": step_idx,
