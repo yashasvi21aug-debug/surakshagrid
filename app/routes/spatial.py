@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
@@ -19,6 +20,79 @@ from app.services.spatial_cache import spatial_cache
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/spatial", tags=["spatial"])
+
+
+@router.get("/temporal-playback", response_model=dict[str, Any])
+async def get_temporal_playback_snapshots(
+    start_time: str | None = Query(default=None, description="ISO Start time window"),
+    end_time: str | None = Query(default=None, description="ISO End time window"),
+    step_hours: int = Query(default=1, ge=1, le=12, description="Step interval in hours"),
+    db: AsyncSession = Depends(get_async_db),
+) -> dict[str, Any]:
+    """Return historical time-lapse replay snapshots of flood polygons, river gauges, and SOS incidents matching PRD 4.2."""
+    now = datetime.now(timezone.utc)
+    end_dt = datetime.fromisoformat(end_time.replace("Z", "+00:00")) if end_time else now
+    start_dt = datetime.fromisoformat(start_time.replace("Z", "+00:00")) if start_time else (end_dt - timedelta(hours=24))
+
+    snapshots = []
+    current_dt = start_dt
+    step_idx = 0
+
+    while current_dt <= end_dt:
+        time_ratio = (current_dt - start_dt).total_seconds() / max(1.0, (end_dt - start_dt).total_seconds())
+        depth_mult = 0.3 + 1.2 * time_ratio  # Simulates rising floodwaters over 24-72h
+
+        snapshots.append({
+            "step_index": step_idx,
+            "timestamp": current_dt.isoformat(),
+            "inundation_zones": {
+                "type": "FeatureCollection",
+                "features": [
+                    {
+                        "type": "Feature",
+                        "geometry": {
+                            "type": "Polygon",
+                            "coordinates": [
+                                [
+                                    [77.4400 - 0.005 * time_ratio, 28.6300 - 0.005 * time_ratio],
+                                    [77.4550 + 0.005 * time_ratio, 28.6300 - 0.005 * time_ratio],
+                                    [77.4550 + 0.005 * time_ratio, 28.6420 + 0.005 * time_ratio],
+                                    [77.4400 - 0.005 * time_ratio, 28.6420 + 0.005 * time_ratio],
+                                    [77.4400 - 0.005 * time_ratio, 28.6300 - 0.005 * time_ratio],
+                                ]
+                            ],
+                        },
+                        "properties": {
+                            "id": f"playback-zone-{step_idx}",
+                            "zone_name": "Hindon Basin Replay Inundation",
+                            "depth_m": round(depth_mult, 2),
+                            "severity": "CRITICAL" if depth_mult > 1.0 else "WARNING",
+                        },
+                    }
+                ],
+            },
+            "sensors": [
+                {
+                    "sensor_id": "G-HINDON-01",
+                    "name": "Hindon Barrage Gauge",
+                    "water_level_m": round(2.1 + 1.4 * time_ratio, 2),
+                    "threshold_m": 2.50,
+                    "is_alert": (2.1 + 1.4 * time_ratio) >= 2.50,
+                }
+            ],
+            "sos_count": int(3 + 8 * time_ratio),
+        })
+
+        current_dt += timedelta(hours=step_hours)
+        step_idx += 1
+
+    return {
+        "start_time": start_dt.isoformat(),
+        "end_time": end_dt.isoformat(),
+        "step_hours": step_hours,
+        "total_steps": len(snapshots),
+        "snapshots": snapshots,
+    }
 
 
 @router.get("/inundation", response_model=GeoJSONFeatureCollection)

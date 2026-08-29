@@ -30,6 +30,7 @@ from app.routes.routes import router as routes_router
 from app.routes.sos import router as sos_router
 from app.routes.spatial import router as spatial_router
 from app.routes.ws import router as ws_router
+from app.services.sentinel_hub import background_sentinel_ingestion_loop
 from app.services.weather import background_ingestion_loop, fetch_live_weather
 
 # 0. Setup Structured JSON Logging
@@ -42,7 +43,7 @@ limiter = Limiter(key_func=get_remote_address, default_limits=["120/minute"])
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """FastAPI Application Lifespan context manager with background ingestion task worker."""
+    """FastAPI Application Lifespan context manager with background ingestion task workers."""
     logger.info("Initializing SurakshaGrid backend services...")
     try:
         await init_db()
@@ -59,16 +60,18 @@ async def lifespan(app: FastAPI):
     except Exception as error:
         logger.warning("ML model artifacts unavailable at startup: %s", error)
 
-    # Launch background IoT sensor ingestion task worker
-    ingestion_task = asyncio.create_task(background_ingestion_loop(interval_seconds=300))
+    # Launch background IoT sensor & Sentinel-1 SAR ingestion task workers
+    weather_task = asyncio.create_task(background_ingestion_loop(interval_seconds=300))
+    sentinel_task = asyncio.create_task(background_sentinel_ingestion_loop(interval_seconds=3600))
 
     yield
 
     logger.info("Shutting down SurakshaGrid backend services...")
-    ingestion_task.cancel()
+    weather_task.cancel()
+    sentinel_task.cancel()
     try:
-        await ingestion_task
-    except asyncio.CancelledError:
+        await asyncio.gather(weather_task, sentinel_task, return_exceptions=True)
+    except Exception:
         pass
 
 

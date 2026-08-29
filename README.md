@@ -1,150 +1,143 @@
-# SurakshaGrid: Real-Time Disaster Response & Spatial Emergency Grid
+# 🛡️ SurakshaGrid (PRD v1.0.0)
+> **AI-Powered Flood Disaster Incident Command, Safe Corridor Routing, & Digital Twin Platform**
 
-SurakshaGrid is an open disaster management platform designed to coordinate emergency response during severe flooding and extreme weather events. It integrates spatial hazard analysis, machine learning inundation prediction, evasive emergency vehicle routing, and real-time WebSocket communication to connect citizens, dispatchers, and rescue field teams.
+SurakshaGrid is a production-grade, real-time disaster management and emergency response system tailored for extreme urban flood events along high-risk river basin sub-catchments (such as the Hindon and Yamuna river basins). The platform bridges citizen distress telemetry, IoT river gauge metrics, Sentinel-1 Synthetic Aperture Radar (SAR) flood extent extraction, and dynamic evasive routing for field rescue operators (NDRF).
 
 ---
 
-## System Architecture
+## 🏗️ System Architecture & Data Flow
 
-```mermaid
-flowchart TD
-    subgraph Client Layer ["Client Layer (Jinja2 + Modular Vanilla JS)"]
-        CP["Citizen Portal\n(app/templates/citizen.html)"]
-        DV["Driver / Responder View\n(app/templates/driver.html)"]
-        CD["Command Dashboard\n(app/templates/dashboard.html)"]
-    end
-
-    subgraph API Layer ["FastAPI Backend (app/main.py)"]
-        REST["REST API Endpoints\n(app/routes/sos.py, spatial.py, ml.py)"]
-        WSM["Room-Based WebSocket Broker\n(app/websocket_manager.py)"]
-        CLI["Unified Typer/Click CLI\n(app/cli.py)"]
-    end
-
-    subgraph Intelligence & Services ["Services Layer"]
-        MLE["ML Inundation Predictor\n(app/services/ml_service.py)"]
-        RTE["Flood-Evasive Router\n(app/services/routing.py)"]
-        SAR["SAR Processor\n(app/services/sar.py)"]
-    end
-
-    subgraph Storage & External ["Data & Integration Layer"]
-        SDB[("PostGIS / SQLite DB\n(app/database.py)")]
-        OSRM["OSRM Routing Engine"]
-        MLA["Model Artifact\n(ml/models/inundation_model.joblib)"]
-    end
-
-    CP -->|POST /api/v1/sos/| REST
-    DV -->|GET /api/v1/spatial/evasive-route| REST
-    CD -->|WebSocket /ws/dashboard| WSM
-    REST --> RTE
-    REST --> MLE
-    MLE --> MLA
-    RTE --> OSRM
-    RTE --> SDB
-    REST --> SDB
-    WSM -->|Broadcasting| CP
-    WSM -->|Broadcasting| DV
-    WSM -->|Broadcasting| CD
+```text
+[ Citizen PWA ]          [ IoT River Gauges ]          [ Copernicus / AWS ]
+(Offline Tile Cache)      (Precipitation & Δh/Δt)       (Sentinel-1 SAR GRD)
+        │                          │                             │
+        ▼                          ▼                             ▼
+┌────────────────────────────────────────────────────────────────────────┐
+│                   SurakshaGrid FastAPI Engine (v1.0.0)                 │
+│  - Security & OWASP Headers       - Prometheus Telemetry Metrics       │
+│  - SlowAPI Rate Limiter          - Hydrology XGBoost Model            │
+│  - PostGIS Spatial Indexing      - OSRM Safe Corridor Engine          │
+└──────────────────────────────────┬─────────────────────────────────────┘
+                                   │ Real-Time WebSockets (/ws) <200ms
+                                   ▼
+┌────────────────────────────────────────────────────────────────────────┐
+│                  EOC Tactical Command Dashboard (Next.js 14)           │
+│  - MapLibre GL Tactical Map      - Zustand Global State Store          │
+│  - Turn-by-Turn Maneuver Cards   - Historical 24h Time-Lapse Replay    │
+└────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## Core Features & Capabilities
+## 🛠️ Tech Stack Breakdown
 
-- **Real-Time Emergency Lifecycle**: Citizen SOS dispatch, command dashboard alerting, responder assignment, and incident resolution.
-- **Flood Inundation Prediction**: Scikit-Learn pipeline predicting water rise and flood probability with a deterministic **Rational Runoff ($Q = C \cdot I \cdot A$)** physics fallback.
-- **Spatial Hazard Evasive Routing**: `shapely` & `geopy` corridor intersection testing against SAR/database flood polygons with offline centroid-offset bypass waypoints.
-- **Room-Based Event Broadcasting**: Thread-safe WebSocket manager broadcasting alerts across `dashboard`, `responders`, and `citizens` rooms.
-- **SAR Satellite Inundation Extractor**: Sentinel-1 Synthetic Aperture Radar (SAR) backscatter speckle filtering and polygon vectorization.
+- **Backend Framework:** FastAPI 0.109+, Python 3.11/3.14, AsyncIO, Uvicorn, SlowAPI rate limiting.
+- **Database & Spatial Engine:** PostgreSQL 16 + PostGIS 3.4 (GeoAlchemy2, SQLAlchemy 2.0 Async, GIST spatial indexing).
+- **Machine Learning & Remote Sensing:** XGBoost 2.0, Rasterio, NumPy, Shapely (Lee speckle filtering & Otsu radiometric thresholding).
+- **Routing & Navigation:** OSRM (Open Source Routing Machine) evasive corridor engine avoiding inundated polygons.
+- **Frontend Architecture:** Next.js 14 (App Router), TypeScript, TailwindCSS, MapLibre GL JS, Zustand state management.
+- **Observability & Ops:** Prometheus Instrumentator (`/metrics`), Structured JSON Logging with `X-Request-ID` correlation IDs.
 
 ---
 
-## Local Setup & Execution
+## 🚀 Local Development Setup
 
-### Prerequisites
-
-- Python 3.11+
-- Virtual environment (`venv`)
-
-### 1. Installation
+### 1. Run with Docker Compose (Recommended)
+Launch the complete microservice stack (FastAPI, PostGIS, OSRM Engine, Next.js Frontend) with a single command:
 
 ```bash
-# Clone repository
-git clone https://github.com/your-org/surakshagrid.git
-cd surakshagrid
+docker compose up --build
+```
 
-# Create and activate virtual environment
+- **Next.js Frontend:** `http://localhost:3000`
+- **FastAPI Backend:** `http://localhost:8000`
+- **OpenAPI / Swagger Specs:** `http://localhost:8000/docs`
+- **Prometheus Metrics:** `http://localhost:8000/metrics`
+
+### 2. Manual Local Setup
+
+```bash
+# 1. Clone & setup Python environment
 python -m venv .venv
-# On Linux/macOS: source .venv/bin/activate
-# On Windows: .venv\Scripts\activate
-
-# Install dependencies
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-```
 
-### 2. Unified CLI Execution
+# 2. Start PostgreSQL/PostGIS database
+docker run -d --name suraksha-postgis -p 5432:5432 -e POSTGRES_DB=surakshagrid -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres postgis/postgis:16-3.4
 
-SurakshaGrid includes a unified command-line interface (`python -m app`) for server execution, database seeding, and model training:
+# 3. Apply database migrations
+python -m app migrate
 
-```bash
-# Seed the database with realistic demo incidents, shelters, and flood polygons
-python -m app seed
-
-# Train the inundation ML model artifact
-python -m app train
-
-# Launch the FastAPI web server on http://localhost:8000
-python -m app run
+# 4. Launch FastAPI server
+uvicorn app.main:app --reload --port 8000
 ```
 
 ---
 
-## Containerized Deployment (Docker)
+## ☁️ Render Production Deployment Guide
 
-SurakshaGrid is containerized using a multi-stage `Dockerfile` executing as a non-root system user (`appuser` UID 10001).
+SurakshaGrid is pre-configured for automated deployment on Render via [`render.yaml`](file:///c:/Dev/SurakshaGrid/surakshagrid/render.yaml).
 
-### Run with Docker Compose
-
-```bash
-# Build and launch FastAPI, PostGIS, and OSRM services
-docker compose up --build -d
-
-# Check service status and health checks
-docker compose ps
-
-# View application logs
-docker compose logs -f api
-```
-
-The application services will be accessible at:
-- **FastAPI Application & Dashboard**: `http://localhost:8000`
-- **PostGIS Database**: `localhost:5432`
-- **OSRM Routing Engine**: `http://localhost:5000`
+### Step-by-Step Render Deployment:
+1. Connect your GitHub repository to **Render Cloud Console**.
+2. Select **New > Blueprint** and select `render.yaml`.
+3. Render automatically provisions:
+   - `surakshagrid-db`: Managed PostgreSQL + PostGIS database.
+   - `surakshagrid-api`: Web Service running FastAPI.
+   - `surakshagrid-frontend`: Static Site running Next.js.
+   - `surakshagrid-daily-backup`: Cron Job running daily spatial database dumps (`0 2 * * *`).
 
 ---
 
-## Running Automated Tests
+## 📡 Key REST API Reference (`/api/v1/*`)
 
-Run the complete test suite using `pytest`:
+| Method | Endpoint | Description | Request Payload / Params |
+| :--- | :--- | :--- | :--- |
+| `POST` | `/api/v1/sos` | Ingest citizen distress call | `{ "category": "CRITICAL_TRAPPED", "lat": 28.6321, "lng": 77.4446, "notes": "Stranded" }` |
+| `POST` | `/api/v1/routes/safe-corridor` | Compute evasive safe corridor | `{ "start_lat": 28.6590, "start_lng": 77.2490, "end_lat": 28.6321, "end_lng": 77.4446 }` |
+| `GET` | `/api/v1/spatial/inundation` | Query active flood GeoJSON | `?bbox=77.2,28.5,77.6,28.8` |
+| `GET` | `/api/v1/spatial/sensors` | Fetch IoT gauge telemetry | None |
+| `GET` | `/api/v1/spatial/temporal-playback` | Historical 24h time-lapse replay | `?step_hours=1` |
+| `PATCH` | `/api/v1/dispatch/incident/{id}/status` | Update incident status | `{ "status": "RESOLVED", "officer_notes": "Rescue completed" }` |
+| `GET` | `/api/v1/health/ready` | Deep readiness probe | Checks PostGIS, ML Model, and OSRM reachability |
+| `GET` | `/metrics` | Prometheus telemetry metrics | Standard Prometheus scrape format |
+
+### Sample cURL Commands
 
 ```bash
-# Run all unit and integration tests
+# 1. Submit Emergency Citizen SOS
+curl -X POST "http://localhost:8000/api/v1/sos" \
+  -H "Content-Type: application/json" \
+  -d '{"phone_number": "+91-9876543210", "category": "CRITICAL_TRAPPED", "lat": 28.6321, "lng": 77.4446}'
+
+# 2. Compute Dynamic Safe Corridor Route
+curl -X POST "http://localhost:8000/api/v1/routes/safe-corridor" \
+  -H "Content-Type: application/json" \
+  -d '{"start_lat": 28.6590, "start_lng": 77.2490, "end_lat": 28.6321, "end_lng": 77.4446, "vehicle_type": "boat"}'
+```
+
+---
+
+## 🌊 Disaster Simulation CLI
+
+SurakshaGrid includes a CLI harness to simulate synthetic flood progression, rising gauge telemetry, and citizen SOS dispatches:
+
+```bash
+# Run 60-second flood disaster scenario simulation
+python -m app run-simulation --duration 60 --interval 2.0
+```
+
+---
+
+## 🧪 Testing & Verification
+
+```bash
+# Run full Pytest backend test suite (77+ passed)
 python -m pytest
 
-# Run tests with verbose output
-python -m pytest -v
+# Run E2E Architecture Verification Script (PRD FR-1 to FR-5)
+python scripts/verify_prd_flow.py
+
+# Run Locust High-Concurrency Load Benchmark
+locust -f benchmarks/locustfile.py --headless -u 500 -r 20 -t 60s --host http://localhost:8000
 ```
-
----
-
-## Engineering Highlights
-
-### 1. Flood-Evasive Geospatial Routing Algorithm
-When an emergency vehicle requires dispatch, `app/services/routing.py` constructs a spatial corridor between origin and destination coordinates. Using `shapely`, the route line is tested against active flood polygons (`water_depth_m > 0.3m` or `risk_score >= 0.75`). If an intersection occurs, the engine calculates a normal perpendicular vector from the intersecting polygon's centroid to generate safe bypass waypoints around the hazard.
-
-### 2. Hydrodynamic Machine Learning Engine & Physics Fallback
-In `app/services/ml_service.py`, a serialized Scikit-learn `.joblib` model assesses flood probability based on live precipitation, elevation, soil saturation, and distance to waterways. If model artifacts are missing or unreadable, the predictor seamlessly falls back to a physical **Rational Runoff Formula**:
-$$Q = C \cdot I \cdot A$$
-where peak runoff rate $Q$ is computed directly from runoff coefficient $C$, rainfall intensity $I$, and catchment area $A$.
-
-### 3. Room-Based Thread-Safe WebSocket Event Routing
-In `app/websocket_manager.py`, client connections are organized into distinct channel rooms (`"dashboard"`, `"responders"`, `"citizens"`). Broadcasters acquire `asyncio.Lock()` to prevent race conditions and automatically prune dead socket connections upon transmission failure or keepalive timeouts.
