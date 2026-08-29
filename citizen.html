@@ -29,12 +29,30 @@ const BACKEND_DOMAIN=(window.location.hostname==='localhost'||window.location.ho
 	try { sosBroadcast = new BroadcastChannel('suraksha_grid_realtime'); } catch (error) {}
 	const form = document.getElementById('sos-form');
 	const fallback = { lat: 28.6322, lng: 77.4446 };
+	let pendingIncident = null;
+	const broadcastIncident = (incidentPayload) => {
+		try { if (sosBroadcast) sosBroadcast.postMessage({ type: 'NEW_INCIDENT', payload: incidentPayload }); } catch (error) {}
+		try { localStorage.setItem('suraksha_last_sos', JSON.stringify({ timestamp: Date.now(), payload: incidentPayload })); } catch (error) {}
+	};
+	const originalFetch = window.fetch.bind(window);
+	window.fetch = async (...args) => {
+		const requestUrl = String(args[0]);
+		try {
+			return await originalFetch(...args);
+		} finally {
+			if (pendingIncident && requestUrl.includes('/api/v1/sos/')) {
+				broadcastIncident(pendingIncident);
+				pendingIncident = null;
+			}
+		}
+	};
 
 	form.addEventListener('submit', () => {
 		const formData = new FormData(form);
 		const selectedType = formData.get('emergencyType');
 		if (!selectedType) return;
 		const generatedTicket = `TICK-${Math.floor(1000 + Math.random() * 9000)}`;
+		const currentPos = window.currentPos || fallback;
 		const incidentPayload = {
 			ticket_id: generatedTicket,
 			emergency_type: selectedType,
@@ -45,10 +63,8 @@ const BACKEND_DOMAIN=(window.location.hostname==='localhost'||window.location.ho
 			details: document.getElementById('notes-input').value.trim() || 'Water entering ground floor, request unit dispatch.',
 			created_at: new Date().toISOString()
 		};
-		try { if (sosBroadcast) sosBroadcast.postMessage({ type: 'NEW_INCIDENT', payload: incidentPayload }); } catch (error) {}
-		try {
-			localStorage.setItem('suraksha_last_sos', JSON.stringify({ timestamp: Date.now(), payload: incidentPayload }));
-		} catch (error) {}
+		pendingIncident = incidentPayload;
+		broadcastIncident(incidentPayload);
 	});
 })();
 </script>

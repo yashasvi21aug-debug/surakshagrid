@@ -392,6 +392,7 @@
             zoomControl: true,
             preferCanvas: true 
         }).setView(currentPos, 13);
+        window.map = map;
 
         // Standard Universal Map Layer
         L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -767,11 +768,15 @@
             }
         }
 
+        function handleIncomingRealtimeIncident(incident) {
+            injectIncidentToDashboard(incident);
+        }
+
         try {
             const sosBroadcast = new BroadcastChannel('suraksha_grid_realtime');
             sosBroadcast.onmessage = (event) => {
                 if (event.data && event.data.type === 'NEW_INCIDENT') {
-                    injectIncidentToDashboard(event.data.payload);
+                    handleIncomingRealtimeIncident(event.data.payload);
                 }
             };
         } catch (error) {}
@@ -780,7 +785,7 @@
             if (event.key !== 'suraksha_last_sos' || !event.newValue) return;
             try {
                 const data = JSON.parse(event.newValue);
-                injectIncidentToDashboard(data.payload);
+                handleIncomingRealtimeIncident(data.payload);
             } catch (error) {}
         });
 
