@@ -1,34 +1,30 @@
 import os
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, declarative_base
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+from sqlalchemy.orm import declarative_base
 
-# Read DATABASE_URL or fallback to local SQLite
-raw_db_url = os.getenv("DATABASE_URL", "").strip()
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+asyncpg://postgres:nexyash$21@localhost:5432/postgres")
 
-if not raw_db_url:
-    DATABASE_URL = "sqlite:///./surakshagrid.db"
-else:
-    # Render PostgreSQL URLs start with postgres://, but SQLAlchemy requires postgresql://
-    if raw_db_url.startswith("postgres://"):
-        DATABASE_URL = raw_db_url.replace("postgres://", "postgresql://", 1)
-    else:
-        DATABASE_URL = raw_db_url
+# If an un-aliased URL is passed, ensure asyncpg dialect is attached
+if DATABASE_URL.startswith("postgresql://"):
+    DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://", 1)
 
-# SQLite requires check_same_thread=False
-connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
-
-engine = create_engine(DATABASE_URL, connect_args=connect_args)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+engine = create_async_engine(DATABASE_URL, echo=False, future=True)
+AsyncSessionLocal = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 Base = declarative_base()
 
-def get_db():
-    """Dependency for injecting database sessions into FastAPI routes."""
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+async def get_db():
+    async with AsyncSessionLocal() as session:
+        try:
+            yield session
+        finally:
+            await session.close()
 
-def init_db():
-    """Initializes tables on startup."""
-    Base.metadata.create_all(bind=engine)
+async def init_db():
+    try:
+        async with engine.begin() as conn:
+            # Connect verification
+            pass
+        return True
+    except Exception as e:
+        print("Async DB Init Warning:", e)
+        return False

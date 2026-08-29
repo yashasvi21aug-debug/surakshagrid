@@ -1,9 +1,9 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>SurakshaGrid — NDRF Incident Command</title>
+  <title>SurakshaGrid � NDRF Incident Command</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -11,7 +11,7 @@
 <body class="bg-slate-950 text-slate-100 font-sans min-h-screen flex flex-col">
   <header class="bg-slate-900/80 backdrop-blur border-b border-slate-800 p-4 flex justify-between items-center">
     <div class="flex items-center space-x-3">
-      <div class="w-7 h-7 bg-blue-600 rounded-lg flex items-center justify-center font-bold text-white shadow-lg shadow-blue-500/20">🛡️</div>
+      <div class="w-7 h-7 bg-blue-600 rounded-lg flex items-center justify-center font-bold text-white shadow-lg shadow-blue-500/20">???</div>
       <div>
         <h1 class="text-sm font-bold tracking-wider">SURAKSHAGRID <span class="text-[10px] bg-blue-900/50 text-blue-400 px-2 py-0.5 rounded border border-blue-700">NDRF INCIDENT COMMAND</span></h1>
       </div>
@@ -65,7 +65,7 @@
 
   <script>
     const map = L.map('map').setView([28.6350, 77.4350], 13);
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { maxZoom: 19 }).addTo(map);
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
 
     let vehicleMarker = L.marker([28.6410, 77.4280]).addTo(map).bindPopup("NDRF Base Station Unit #4");
     let currentRoute = null;
