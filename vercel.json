@@ -1,11 +1,12 @@
 {
-  "framework": null,
+  "version": 2,
   "cleanUrls": true,
-  "rewrites": [
-    { "source": "/", "destination": "/index.html" },
-    { "source": "/dashboard", "destination": "/index.html" },
-    { "source": "/citizen", "destination": "/citizen.html" },
-    { "source": "/sos", "destination": "/citizen.html" },
-    { "source": "/driver", "destination": "/driver.html" }
+  "trailingSlash": false,
+  "routes": [
+    { "src": "/dashboard", "dest": "/index.html" },
+    { "src": "/citizen", "dest": "/citizen.html" },
+    { "src": "/sos", "dest": "/citizen.html" },
+    { "src": "/driver", "dest": "/driver.html" },
+    { "src": "/", "dest": "/index.html" }
   ]
 }
