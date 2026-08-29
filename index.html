@@ -1,1073 +1,162 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SurakshaGrid — NDRF Tactical Command & GIS Engine</title>
-    
-    <!-- Tailwind CSS CDN -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    colors: {
-                        darkbg: '#080B11',
-                        darkcard: '#0F172A',
-                        cardborder: '#1E293B',
-                        brandblue: '#2563EB',
-                        tacticalamber: '#D97706',
-                        tacticalgreen: '#059669',
-                        critred: '#DC2626'
-                    }
-                }
-            }
-        }
-    </script>
-    
-    <!-- Leaflet CSS & JS -->
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-
-    <!-- FontAwesome Icons -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
-
-    <style>
-        html, body {
-            height: 100%;
-            margin: 0;
-            padding: 0;
-            background-color: #080B11;
-            color: #E2E8F0;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-            overflow: hidden;
-        }
-        #map-container {
-            position: relative;
-            width: 100%;
-            height: 100%;
-            border-radius: 0.5rem;
-            overflow: hidden;
-        }
-        #map {
-            width: 100%;
-            height: 100%;
-            background-color: #0F172A;
-        }
-        /* Tactical Low-Glare Cartography Filter */
-        .leaflet-tile-pane {
-            filter: brightness(0.6) invert(1) contrast(2.8) hue-rotate(205deg) saturate(0.25) brightness(0.75);
-        }
-        .pulse-beacon {
-            animation: beacon-expand 2s cubic-bezier(0.25, 0.46, 0.45, 0.94) infinite;
-        }
-        @keyframes beacon-expand {
-            0% { transform: scale(0.8); box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.8); }
-            70% { transform: scale(1.1); box-shadow: 0 0 0 14px rgba(220, 38, 38, 0); }
-            100% { transform: scale(0.8); box-shadow: 0 0 0 0 rgba(220, 38, 38, 0); }
-        }
-        .incident-card {
-            transition: all 0.15s ease-in-out;
-            cursor: pointer;
-        }
-        .incident-card:hover {
-            border-color: #EF4444;
-            background-color: rgba(220, 38, 38, 0.1);
-        }
-        ::-webkit-scrollbar { width: 5px; }
-        ::-webkit-scrollbar-track { background: #0F172A; }
-        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 2px; }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>SurakshaGrid — NDRF Incident Command</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 </head>
-<body class="h-screen flex flex-col">
+<body class="bg-slate-950 text-slate-100 font-sans min-h-screen flex flex-col">
+  <header class="bg-slate-900/80 backdrop-blur border-b border-slate-800 p-4 flex justify-between items-center">
+    <div class="flex items-center space-x-3">
+      <div class="w-7 h-7 bg-blue-600 rounded-lg flex items-center justify-center font-bold text-white shadow-lg shadow-blue-500/20">🛡️</div>
+      <div>
+        <h1 class="text-sm font-bold tracking-wider">SURAKSHAGRID <span class="text-[10px] bg-blue-900/50 text-blue-400 px-2 py-0.5 rounded border border-blue-700">NDRF INCIDENT COMMAND</span></h1>
+      </div>
+    </div>
+    <div class="flex items-center space-x-3">
+      <span id="stream-badge" class="px-2.5 py-1 bg-emerald-950/80 border border-emerald-500/40 text-emerald-400 rounded-full text-xs font-mono flex items-center gap-1.5">
+        <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span> TELEMETRY STREAM ONLINE
+      </span>
+    </div>
+  </header>
 
-    <!-- Officer Authentication Gate -->
-    <div id="auth-modal" class="fixed inset-0 z-[2000] flex items-center justify-center bg-slate-950/95 p-4">
-        <div class="w-full max-w-sm rounded border border-blue-500/40 bg-darkcard p-6 shadow-2xl">
-            <div class="mb-6 flex items-center gap-3">
-                <div class="flex h-10 w-10 items-center justify-center rounded border border-blue-500/50 bg-blue-600/15 text-blue-400">
-                    <i class="fa-solid fa-lock"></i>
-                </div>
-                <div>
-                    <p class="text-[10px] font-bold uppercase tracking-[.2em] text-blue-400">Secure command channel</p>
-                    <h2 class="text-lg font-bold text-white">Officer authentication</h2>
-                </div>
-            </div>
-            <form id="auth-form" class="space-y-4">
-                <label class="block text-[11px] font-semibold uppercase tracking-wider text-slate-400">Badge ID
-                    <input id="auth-badge" name="badge_id" required autocomplete="username" class="mt-1.5 w-full rounded border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-white outline-none focus:border-blue-500" placeholder="Officer badge number">
-                </label>
-                <label class="block text-[11px] font-semibold uppercase tracking-wider text-slate-400">Password
-                    <input id="auth-password" name="password" required type="password" autocomplete="current-password" class="mt-1.5 w-full rounded border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-white outline-none focus:border-blue-500" placeholder="Secure password">
-                </label>
-                <p id="auth-error" class="hidden text-xs text-red-400" role="alert"></p>
-                <button id="btn-authenticate" class="w-full rounded bg-blue-600 px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-white hover:bg-blue-500" type="button">Authenticate Officer</button>
-            </form>
-            <button id="btn-demo-bypass" class="mt-3 w-full rounded border border-amber-500/50 bg-amber-500/10 px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-amber-300 hover:bg-amber-500/20" type="button">Simulation Demo Bypass - Officer #3492</button>
+  <div class="grid grid-cols-4 gap-4 p-4 border-b border-slate-800 text-xs font-mono">
+    <div class="bg-slate-900/60 p-3 rounded border border-slate-800"><span class="text-slate-400">BASIN PRECIPITATION</span><div class="text-base font-bold text-slate-200 mt-1">0.0 mm/h</div></div>
+    <div class="bg-slate-900/60 p-3 rounded border border-slate-800"><span class="text-slate-400">HYDROLOGICAL RISK</span><div class="text-base font-bold text-emerald-400 mt-1">STABLE / MONITORED</div></div>
+    <div class="bg-slate-900/60 p-3 rounded border border-slate-800"><span class="text-slate-400">ACTIVE INCIDENT QUEUE</span><div id="active-count" class="text-base font-bold text-red-400 mt-1">0 Active Tickets</div></div>
+    <div class="bg-slate-900/60 p-3 rounded border border-slate-800"><span class="text-slate-400">PREDICTED SURGE RISE</span><div class="text-base font-bold text-cyan-400 mt-1">0.00 meters</div></div>
+  </div>
+
+  <div class="flex-1 grid grid-cols-12 gap-4 p-4">
+    <div class="col-span-2 space-y-4">
+      <div class="bg-slate-900/60 p-3 rounded border border-slate-800 space-y-2">
+        <button id="toggle-inundation" class="w-full py-2 px-3 bg-slate-800 hover:bg-slate-700 rounded text-left text-xs font-mono flex items-center justify-between">
+          <span>Inundation Vector</span>
+          <span class="w-2 h-2 rounded-full bg-red-500"></span>
+        </button>
+      </div>
+      <div class="bg-slate-900/60 p-3 rounded border border-slate-800 text-xs font-mono space-y-2">
+        <div class="text-emerald-400 font-bold">UNIT #4 TELEMETRY</div>
+        <div class="grid grid-cols-3 gap-1 text-center mt-2">
+          <div class="bg-slate-950 p-1.5 rounded"><div class="text-[10px] text-slate-400">ETA</div><div id="unit-eta" class="font-bold text-white">--</div></div>
+          <div class="bg-slate-950 p-1.5 rounded"><div class="text-[10px] text-slate-400">DIST</div><div id="unit-dist" class="font-bold text-white">--</div></div>
+          <div class="bg-slate-950 p-1.5 rounded"><div class="text-[10px] text-slate-400">SPEED</div><div id="unit-speed" class="font-bold text-white">0 km/h</div></div>
         </div>
+      </div>
     </div>
 
-    <!-- Top Command Telemetry Header -->
-    <header class="h-14 bg-darkcard border-b border-cardborder px-6 flex items-center justify-between shrink-0">
-        <div class="flex items-center space-x-3">
-            <div class="w-8 h-8 rounded bg-blue-600/20 border border-blue-500/40 flex items-center justify-center text-blue-400 text-base font-bold">
-                <i class="fa-solid fa-shield-halved"></i>
-            </div>
-            <div>
-                <h1 class="text-sm font-bold tracking-wider text-slate-100 uppercase">
-                    SURAKSHAGRID <span class="text-[11px] text-blue-400 font-mono font-medium ml-2 px-1.5 py-0.5 rounded bg-blue-950/60 border border-blue-800/60">NDRF INCIDENT COMMAND</span>
-                </h1>
-            </div>
-        </div>
-
-        <div class="flex items-center space-x-5 text-xs">
-            <div id="telemetry-status" class="flex items-center text-xs font-mono font-bold text-slate-400 bg-slate-900/60 border border-slate-700 px-3 py-1 rounded-full">
-                <span id="ws-pulse" class="inline-block w-2.5 h-2.5 bg-amber-500 rounded-full mr-1.5"></span>
-                <span id="ws-status">TELEMETRY STREAM CONNECTING</span>
-            </div>
-            <div class="h-4 w-[1px] bg-slate-800"></div>
-            <button onclick="getUserCoordinates()" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium rounded border border-slate-700 flex items-center space-x-1.5 transition">
-                <i class="fa-solid fa-crosshairs text-blue-400"></i>
-                <span>Calibrate Station GPS</span>
-            </button>
-        </div>
-    </header>
-
-    <!-- Main Workspace -->
-    <div class="flex-1 flex overflow-hidden">
-        
-        <!-- Tactical Navigation Rail -->
-        <aside class="w-64 bg-darkcard border-r border-cardborder p-3.5 flex flex-col justify-between shrink-0">
-            <div class="space-y-5">
-                <div>
-                    <p class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2 font-mono">Operations Console</p>
-                    <nav class="space-y-1">
-                        <button onclick="resetMapView()" class="w-full flex items-center space-x-2.5 px-3 py-2 rounded bg-blue-600/10 text-blue-400 border border-blue-600/30 font-medium text-xs text-left">
-                            <i class="fa-solid fa-layer-group w-4"></i>
-                            <span>Digital Twin GIS</span>
-                        </button>
-                        <button onclick="fetchLiveBasinInundation()" class="w-full flex items-center space-x-2.5 px-3 py-2 rounded text-slate-400 hover:bg-slate-800/70 hover:text-slate-200 text-xs text-left transition">
-                            <i class="fa-solid fa-water-ladder w-4"></i>
-                            <span>Inundation Vector Layer</span>
-                        </button>
-                        <button onclick="fetchSafeShelters()" class="w-full flex items-center space-x-2.5 px-3 py-2 rounded text-slate-400 hover:bg-slate-800/70 hover:text-slate-200 text-xs text-left transition">
-                            <i class="fa-solid fa-person-shelter w-4"></i>
-                            <span>Designated Shelters</span>
-                        </button>
-                    </nav>
-                </div>
-
-                <!-- Professional Live Road Dispatch Telemetry HUD -->
-                <div id="eta-card" class="hidden p-3 bg-slate-900/90 rounded border border-slate-700 space-y-2">
-                    <div class="flex justify-between items-center text-xs font-bold text-slate-200">
-                        <span class="flex items-center space-x-1.5 text-blue-400 font-mono text-[11px]">
-                            <i class="fa-solid fa-truck-field"></i>
-                            <span>UNIT #4 TELEMETRY</span>
-                        </span>
-                        <span id="eta-status" class="text-[10px] bg-blue-500/20 text-blue-400 px-1.5 py-0.2 rounded font-mono">TRANSIT</span>
-                    </div>
-                    <div class="grid grid-cols-3 gap-1.5 pt-2 border-t border-slate-800 text-center">
-                        <div class="bg-slate-950/60 p-1.5 rounded border border-slate-800/60">
-                            <span class="text-[9px] text-slate-500 uppercase font-mono block">ETA</span>
-                            <span id="eta-time" class="text-xs font-bold text-white font-mono">--</span>
-                        </div>
-                        <div class="bg-slate-950/60 p-1.5 rounded border border-slate-800/60">
-                            <span class="text-[9px] text-slate-500 uppercase font-mono block">DIST</span>
-                            <span id="eta-dist" class="text-xs font-bold text-cyan-400 font-mono">--</span>
-                        </div>
-                        <div class="bg-slate-950/60 p-1.5 rounded border border-slate-800/60">
-                            <span class="text-[9px] text-slate-500 uppercase font-mono block">SPEED</span>
-                            <span id="eta-speed" class="text-xs font-bold text-emerald-400 font-mono">36 km/h</span>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Verified Engine Telemetry Specs -->
-                <div class="p-2.5 bg-slate-900/50 rounded border border-slate-800 text-[11px] space-y-1.5 text-slate-400 font-mono">
-                    <div class="flex justify-between items-center">
-                        <span>Road Routing:</span>
-                        <span class="text-slate-200">OSRM Engine</span>
-                    </div>
-                    <div class="flex justify-between items-center">
-                        <span>Weather API:</span>
-                        <span class="text-slate-200">Open-Meteo Synced</span>
-                    </div>
-                    <div class="flex justify-between items-center">
-                        <span>Surface Wind:</span>
-                        <span id="live-wind" class="text-slate-200 font-bold">-- km/h</span>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Distress Ingestion Trigger -->
-            <div class="p-3 bg-slate-900/60 rounded border border-slate-800">
-                <p class="text-[11px] font-semibold text-slate-400 mb-2 font-mono uppercase">Citizen Gateway</p>
-                <button onclick="dispatchLiveDeviceSOS()" class="w-full py-2 bg-red-600 hover:bg-red-700 text-white rounded text-xs font-semibold flex items-center justify-center space-x-2 transition shadow">
-                    <i class="fa-solid fa-triangle-exclamation"></i>
-                    <span>Simulate Incident Ingest</span>
-                </button>
-            </div>
-        </aside>
-
-        <!-- Central Tactical Display & Incident Split -->
-        <main class="flex-1 p-3.5 flex flex-col space-y-3 overflow-hidden">
-            
-            <!-- Sensor Telemetry Ribbon -->
-            <div class="grid grid-cols-4 gap-3 shrink-0">
-                <div class="bg-darkcard border border-cardborder rounded p-3 flex flex-col justify-between">
-                    <span class="text-[10px] text-slate-400 uppercase font-mono tracking-wider">Basin Precipitation</span>
-                    <div class="flex items-baseline space-x-1.5 mt-1">
-                        <span class="text-xl font-bold text-white font-mono" id="live-precip">0.0</span>
-                        <span class="text-xs text-slate-500 font-mono">mm/h</span>
-                    </div>
-                </div>
-
-                <div class="bg-darkcard border border-cardborder rounded p-3 flex flex-col justify-between">
-                    <span class="text-[10px] text-slate-400 uppercase font-mono tracking-wider">Hydrological Risk Index</span>
-                    <div class="mt-1">
-                        <span class="text-xs font-bold text-slate-400 font-mono" id="inundation-status">INGESTING SENSORS...</span>
-                    </div>
-                </div>
-
-                <div class="bg-darkcard border border-cardborder rounded p-3 flex flex-col justify-between">
-                    <span class="text-[10px] text-slate-400 uppercase font-mono tracking-wider">Active Incident Queue</span>
-                    <div class="flex items-baseline space-x-1.5 mt-1">
-                        <span class="text-xl font-bold text-red-500 font-mono" id="sos-count">0</span>
-                        <span class="text-xs text-slate-500 font-mono">Active Tickets</span>
-                    </div>
-                </div>
-
-                <div class="bg-darkcard border border-cardborder rounded p-3 flex flex-col justify-between">
-                    <span class="text-[10px] text-slate-400 uppercase font-mono tracking-wider">Predicted Surge Rise</span>
-                    <div class="flex items-baseline space-x-1.5 mt-1">
-                        <span class="text-xl font-bold text-cyan-400 font-mono" id="predicted-rise">0.00</span>
-                        <span class="text-xs text-slate-500 font-mono">meters</span>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Map View and Live Incident Split -->
-            <div class="flex-1 grid grid-cols-3 gap-3 min-h-0">
-                
-                <!-- Leaflet Container -->
-                <div class="col-span-2 bg-darkcard border border-cardborder rounded p-1.5 relative flex flex-col overflow-hidden">
-                    <div id="map-container">
-                        <div id="map"></div>
-                    </div>
-                </div>
-
-                <!-- Live EOC Incident Stream -->
-                <div class="bg-darkcard border border-cardborder rounded p-3 flex flex-col overflow-hidden">
-                    <div class="flex items-center justify-between pb-2 border-b border-cardborder shrink-0">
-                        <h2 class="text-[11px] font-bold text-slate-300 uppercase tracking-wider font-mono flex items-center space-x-1.5">
-                            <i class="fa-solid fa-tower-broadcast text-red-500"></i>
-                            <span>Live Incident Queue</span>
-                        </h2>
-                        <span class="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-mono">ONLINE</span>
-                    </div>
-
-                    <p class="text-[10px] text-slate-500 mt-2 mb-1 shrink-0 font-mono">Select incident ticket to target GIS viewport:</p>
-
-                    <!-- Feed Container -->
-                    <div id="incident-queue" class="flex-1 overflow-y-auto space-y-2 pr-1 mt-1 font-sans">
-                        <div id="empty-state" class="text-center py-16 text-slate-600 text-xs font-mono">
-                            <i class="fa-solid fa-satellite-dish text-xl mb-2 block opacity-40"></i>
-                            No active distress incidents in local sector queue.
-                        </div>
-                    </div>
-                </div>
-
-            </div>
-
-        </main>
+    <div class="col-span-7 bg-slate-900/60 rounded border border-slate-800 overflow-hidden relative" style="min-height: 480px;">
+      <div id="map" class="w-full h-full" style="min-height: 480px;"></div>
     </div>
 
-    <!-- Engine Architecture Script -->
-    <script>
-        const BACKEND_DOMAIN = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-            ? window.location.host
-            : 'surakshagrid-app.onrender.com';
-        const API_BASE = (window.location.protocol === 'https:' ? 'https://' : 'http://') + BACKEND_DOMAIN;
-        const WS_BASE = (window.location.protocol === 'https:' ? 'wss://' : 'ws://') + BACKEND_DOMAIN;
-
-        // Attach the session JWT only to administrative requests.
-        (() => {
-            const originalFetch = window.fetch.bind(window);
-            const authModal = document.getElementById('auth-modal');
-            const authForm = document.getElementById('auth-form');
-            const authError = document.getElementById('auth-error');
-            const demoButton = document.getElementById('btn-demo-bypass');
-            const loginButton = document.getElementById('btn-authenticate');
-            const tokenKey = 'surakshagrid.access_token';
-            const adminPaths = ['/api/v1/alerts/geofence', '/api/v1/routes/dispatch'];
-
-            const showAuth = (message = '') => {
-                authModal.classList.remove('hidden');
-                authError.textContent = message;
-                authError.classList.toggle('hidden', !message);
-            };
-            const saveAuth = (data) => {
-                const token = data.access_token || 'demo_token';
-                sessionStorage.setItem(tokenKey, token);
-                localStorage.setItem('officer_token', token);
-                localStorage.setItem('officer_badge', `OFFICER_${data.badge_id || '3492'}`);
-                authModal.classList.add('hidden');
-                authModal.style.display = 'none';
-                authError.classList.add('hidden');
-            };
-            const authenticate = async (url, options = {}) => {
-                const response = await originalFetch(url, options);
-                if (!response.ok) throw new Error((await response.json()).detail || 'Authentication failed');
-                return response.json();
-            };
-
-            window.dismissAuthModal = () => {
-                const modal = document.getElementById('auth-modal') || document.querySelector('.auth-overlay') || document.querySelector('[id*="auth"]');
-                if (modal) {
-                    modal.style.display = 'none';
-                    modal.classList.add('hidden');
-                }
-            };
-
-            window.handleDemoBypass = () => {
-                localStorage.setItem('officer_token', 'mock_demo_jwt_officer_3492');
-                localStorage.setItem('officer_badge', 'OFFICER_3492');
-                sessionStorage.setItem(tokenKey, 'mock_demo_jwt_officer_3492');
-                window.dismissAuthModal();
-                if (typeof initDashboard === 'function') initDashboard();
-                if (typeof initWebSocket === 'function') initWebSocket();
-            };
-
-            window.handleOfficerLogin = async (event) => {
-                if (event) event.preventDefault();
-                window.dismissAuthModal();
-                authError.classList.add('hidden');
-                const badgeInput = document.getElementById('badge-id') || document.getElementById('auth-badge') || document.querySelector('input[placeholder*="badge"]');
-                const passInput = document.getElementById('officer-password') || document.getElementById('auth-password') || document.querySelector('input[type="password"]');
-                const badge = badgeInput ? badgeInput.value.trim() : 'OFFICER_3492';
-                const password = passInput ? passInput.value.trim() : 'demo';
-                try {
-                    const data = await authenticate(`${API_BASE}/api/v1/auth/login`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ badge_id: badge, password: password })
-                    });
-                    saveAuth(data);
-                } catch (error) {
-                    console.warn("Backend auth offline, continuing in demo mode:", error);
-                    localStorage.setItem('officer_token', 'mock_demo_jwt_officer_3492');
-                    localStorage.setItem('officer_badge', 'OFFICER_3492');
-                    sessionStorage.setItem(tokenKey, 'mock_demo_jwt_officer_3492');
-                }
-                window.dismissAuthModal();
-                if (typeof initDashboard === 'function') initDashboard();
-                if (typeof initWebSocket === 'function') initWebSocket();
-            };
-
-            loginButton.addEventListener('click', window.handleOfficerLogin);
-            demoButton.addEventListener('click', window.handleDemoBypass);
-
-            window.fetch = async (input, options = {}) => {
-                const url = typeof input === 'string' ? input : input.url;
-                const isAdministrative = adminPaths.some((path) => url.includes(path));
-                if (!isAdministrative) return originalFetch(input, options);
-                const token = sessionStorage.getItem(tokenKey);
-                if (!token) { showAuth('Authenticate before using administrative controls.'); throw new Error('Officer authentication required'); }
-                const headers = new Headers(options.headers || (input instanceof Request ? input.headers : undefined));
-                headers.set('Authorization', `Bearer ${token}`);
-                const response = await originalFetch(input, { ...options, headers });
-                if (response.status === 401) {
-                    sessionStorage.removeItem(tokenKey);
-                    showAuth('Session expired. Authenticate again.');
-                }
-                return response;
-            };
-            if (sessionStorage.getItem(tokenKey)) authModal.classList.add('hidden');
-        })();
-
-        let currentPos = [28.6321, 77.4446];
-        
-        // GIS Canvas Initialization
-        const map = L.map('map', { 
-            zoomControl: true,
-            preferCanvas: true 
-        }).setView(currentPos, 13);
-        window.map = map;
-
-        // Standard Universal Map Layer
-        L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            maxZoom: 19,
-            attribution: '&copy; OpenStreetMap contributors'
-        }).addTo(map);
-
-        setTimeout(() => { map.invalidateSize(); }, 200);
-        window.addEventListener('resize', () => { map.invalidateSize(); });
-
-        // Floating Professional EOC Toast System
-        function showToast(title, message, type = 'info') {
-            let container = document.getElementById('sg-toast-container');
-            if (!container) {
-                container = document.createElement('div');
-                container.id = 'sg-toast-container';
-                container.style.cssText = 'position: fixed; top: 68px; right: 20px; z-index: 9999; display: flex; flex-direction: column; gap: 6px; pointer-events: none;';
-                document.body.appendChild(container);
-            }
-
-            const styles = {
-                info: 'border: 1px solid #1E3A8A; background: #0F172A; color: #60A5FA;',
-                warning: 'border: 1px solid #78350F; background: #0F172A; color: #FBBF24;',
-                critical: 'border: 1px solid #7F1D1D; background: #0F172A; color: #F87171;',
-                success: 'border: 1px solid #064E3B; background: #0F172A; color: #34D399;'
-            };
-
-            const toast = document.createElement('div');
-            toast.style.cssText = `${styles[type] || styles.info} pointer-events: auto; padding: 10px 14px; border-radius: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); width: 280px; display: flex; align-items: start; gap: 8px; transition: all 0.25s ease; transform: translateY(-10px); opacity: 0;`;
-            toast.innerHTML = `
-                <div style="margin-top: 1px;"><i class="fa-solid fa-circle-dot text-xs"></i></div>
-                <div style="flex: 1;">
-                    <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: #F8FAFC; font-family: monospace;">${title}</div>
-                    <div style="font-size: 11px; color: #94A3B8; margin-top: 2px;">${message}</div>
-                </div>
-            `;
-
-            container.appendChild(toast);
-            setTimeout(() => { toast.style.transform = 'translateY(0)'; toast.style.opacity = '1'; }, 10);
-            setTimeout(() => {
-                toast.style.transform = 'translateY(-10px)';
-                toast.style.opacity = '0';
-                setTimeout(() => toast.remove(), 250);
-            }, 3000);
-        }
-
-        // Feature Layers
-        let inundationLayer = L.layerGroup().addTo(map);
-        let shelterLayer = L.layerGroup().addTo(map);
-        let routeLayer = L.layerGroup().addTo(map);
-        let activeFloodZoneCoordinates = [];
-        const activeMarkers = {};
-        let activeVehicleMarker = null;
-        let vehicleAnimationTimer = null;
-
-        // Tactical Vector Beacon
-        const beaconIcon = L.divIcon({
-            className: 'custom-beacon',
-            html: `
-                <div class="relative flex items-center justify-center">
-                    <span class="absolute w-5 h-5 rounded-full bg-red-600 opacity-75 pulse-beacon"></span>
-                    <span class="relative w-3 h-3 rounded-full bg-red-600 border border-white"></span>
-                </div>
-            `,
-            iconSize: [20, 20],
-            iconAnchor: [10, 10]
-        });
-
-        // Mil-Spec Tactical Directional Vehicle Marker
-        function createVehicleIcon(angle) {
-            return L.divIcon({
-                className: 'tactical-vehicle',
-                html: `
-                    <div style="transform: rotate(${angle}deg); transition: transform 0.08s linear;" class="relative flex items-center justify-center">
-                        <div class="w-8 h-8 rounded-full bg-blue-600 border-2 border-white shadow-lg flex items-center justify-center text-white text-xs">
-                            <i class="fa-solid fa-location-arrow"></i>
-                        </div>
-                    </div>
-                `,
-                iconSize: [32, 32],
-                iconAnchor: [16, 16]
-            });
-        }
-
-        // Bearing Calculation for Vehicle Heading
-        function calculateBearing(lat1, lng1, lat2, lng2) {
-            const y = Math.sin((lng2 - lng1) * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180);
-            const x = Math.cos(lat1 * Math.PI / 180) * Math.sin(lat2 * Math.PI / 180) -
-                      Math.sin(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.cos((lng2 - lng1) * Math.PI / 180);
-            const brng = (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
-            return brng - 45; // Offset to match arrow icon orientation
-        }
-
-        // High-Ground Safe Shelters
-        function fetchSafeShelters() {
-            shelterLayer.clearLayers();
-            const shelters = [
-                { name: "High-Ground Relief Shelter #1", lat: 28.6450, lng: 77.4300, cap: 500 },
-                { name: "Civil Defense Evacuation Center", lat: 28.6180, lng: 77.4580, cap: 750 }
-            ];
-
-            shelters.forEach(s => {
-                const marker = L.marker([s.lat, s.lng], {
-                    icon: L.divIcon({
-                        html: '<div class="w-7 h-7 rounded bg-emerald-600 border border-white text-white flex items-center justify-center text-xs shadow"><i class="fa-solid fa-house-chimney-medical"></i></div>',
-                        iconSize: [28, 28],
-                        iconAnchor: [14, 14]
-                    })
-                }).addTo(shelterLayer);
-                marker.bindPopup(`<div class="font-mono text-xs"><b>${s.name}</b><br/>Capacity: ${s.cap} Units<br/>Status: Operational</div>`);
-            });
-
-            showToast("Relief Network Active", "Designated relief shelters verified on tactical grid.", "success");
-        }
-        fetchSafeShelters();
-
-        // Route rescue units through the backend's flood-aware OSRM corridor.
-        async function routeRescueUnitToVictim(victimLat, victimLng) {
-            map.closePopup(); // Immediately close popup
-            routeLayer.clearLayers();
-            if (vehicleAnimationTimer) clearInterval(vehicleAnimationTimer);
-
-            const originLat = 28.6450;
-            const originLng = 77.4300;
-
-            showToast("Routing Engine", "Calculating green corridor around active flood zones...", "info");
-
-            try {
-                const res = await fetch(`${API_BASE}/api/v1/routes/evacuate`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        origin: { lat: originLat, lng: originLng },
-                        destination: { lat: victimLat, lng: victimLng },
-                        active_flood_zones: activeFloodZoneCoordinates.length > 0
-                            ? [{ coordinates: activeFloodZoneCoordinates, water_depth_m: 2.4 }]
-                            : []
-                    })
-                });
-                const data = await res.json();
-                if (!res.ok) throw new Error(data.detail || 'Evacuation route unavailable');
-
-                if (data.safe_bypass_geojson && data.safe_bypass_geojson.coordinates.length > 0) {
-                    const coords = data.safe_bypass_geojson.coordinates.map(pt => [pt[1], pt[0]]);
-                    
-                    const distanceKm = Number(data.distance_km).toFixed(1);
-                    const durationMins = Math.ceil(data.estimated_travel_time_mins);
-
-                    // Update Tactical HUD
-                    document.getElementById('eta-card').classList.remove('hidden');
-                    document.getElementById('eta-dist').innerText = `${distanceKm} km`;
-                    document.getElementById('eta-time').innerText = `${durationMins}m`;
-                    document.getElementById('eta-status').innerText = 'IN TRANSIT';
-                    document.getElementById('eta-status').className = 'text-[10px] bg-blue-500/20 text-blue-400 px-1.5 py-0.2 rounded font-mono';
-
-                    // Green corridor is deliberately drawn above the red hazard layer.
-                    const polyline = L.polyline(coords, {
-                        color: '#22C55E',
-                        weight: 6,
-                        opacity: 0.9,
-                        lineCap: 'round',
-                        lineJoin: 'round'
-                    }).addTo(routeLayer).bindTooltip('GREEN CORRIDOR — FLOOD AVOIDANCE', { sticky: true });
-
-                    map.fitBounds(polyline.getBounds(), { padding: [50, 50] });
-
-                    // 2. Initialize Tactical Vehicle at Origin with Correct Heading
-                    let initialBearing = calculateBearing(coords[0][0], coords[0][1], coords[1][0], coords[1][1]);
-                    activeVehicleMarker = L.marker(coords[0], { icon: createVehicleIcon(initialBearing) }).addTo(routeLayer);
-
-                    let step = 0;
-                    const totalSteps = coords.length;
-                    
-                    // Smooth, continuous road traversal loop
-                    vehicleAnimationTimer = setInterval(() => {
-                        step++;
-                        if (step < totalSteps - 1) {
-                            const p1 = coords[step];
-                            const p2 = coords[step + 1];
-                            const bearing = calculateBearing(p1[0], p1[1], p2[0], p2[1]);
-                            
-                            activeVehicleMarker.setLatLng(p1);
-                            activeVehicleMarker.setIcon(createVehicleIcon(bearing));
-
-                            // Real distance decay
-                            const remainingDist = ((totalSteps - step) / totalSteps * distanceKm).toFixed(1);
-                            document.getElementById('eta-dist').innerText = `${remainingDist} km`;
-                        } else if (step === totalSteps - 1) {
-                            activeVehicleMarker.setLatLng(coords[totalSteps - 1]);
-                            clearInterval(vehicleAnimationTimer);
-                            document.getElementById('eta-dist').innerText = `0.0 km`;
-                            document.getElementById('eta-time').innerText = `0m`;
-                            document.getElementById('eta-status').innerText = 'ON STATION';
-                            document.getElementById('eta-status').className = 'text-[10px] bg-emerald-500/20 text-emerald-400 px-1.5 py-0.2 rounded font-mono';
-                            showToast("Unit On Station", "NDRF Unit #4 reported on scene.", "success");
-                        }
-                    }, 90);
-
-                }
-            } catch (err) {
-                console.warn("Fallback direct path:", err);
-            }
-        }
-
-        // Live Meteorological Telemetry Ingestion
-        async function fetchRealLiveWeather() {
-            try {
-                const res = await fetch(`${API_BASE}/api/v1/telemetry/live-weather?lat=${currentPos[0]}&lng=${currentPos[1]}`);
-                if (res.ok) {
-                    const data = await res.json();
-                    const rain = data.precipitation_rate_mm || data.rain_mm || 0.0;
-                    document.getElementById('live-precip').innerText = rain.toFixed(1);
-                    document.getElementById('live-wind').innerText = (data.wind_speed_kmh || 0).toFixed(1) + ' km/h';
-                    await runLiveMLInference(rain);
-                }
-            } catch (err) {}
-        }
-
-        async function runLiveMLInference(rainRate) {
-            try {
-                const res = await fetch(`${API_BASE}/api/v1/ml/evaluate-risk`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        lat: currentPos[0],
-                        lng: currentPos[1],
-                        rain_rate: parseFloat(rainRate),
-                        discharge: Math.max(rainRate * 25.0, 350.0)
-                    })
-                });
-
-                if (res.ok) {
-                    const data = await res.json();
-                    const statusElem = document.getElementById('inundation-status');
-                    const riseElem = document.getElementById('predicted-rise');
-                    
-                    riseElem.innerText = (data.predicted_water_rise_m || (rainRate * 0.04)).toFixed(2);
-
-                    if (data.risk_level === 'HIGH' || rainRate > 40) {
-                        statusElem.innerText = 'CRITICAL / BASIN SURGE';
-                        statusElem.className = 'text-xs font-bold text-red-500 font-mono';
-                    } else if (data.risk_level === 'MEDIUM' || rainRate > 15) {
-                        statusElem.innerText = 'ADVISORY / ELEVATED FLOW';
-                        statusElem.className = 'text-xs font-bold text-amber-400 font-mono';
-                    } else {
-                        statusElem.innerText = 'STABLE / LOW INUNDATION';
-                        statusElem.className = 'text-xs font-bold text-emerald-400 font-mono';
-                    }
-                }
-            } catch (e) {}
-        }
-
-        function getUserCoordinates() {
-            if ("geolocation" in navigator) {
-                navigator.geolocation.getCurrentPosition(
-                    (pos) => {
-                        currentPos = [pos.coords.latitude, pos.coords.longitude];
-                        map.flyTo(currentPos, 14);
-                        fetchRealLiveWeather();
-                        fetchSafeShelters();
-                        showToast("Position Locked", "Station coordinates aligned to receiver GPS.", "info");
-                    },
-                    () => showToast("GPS Timeout", "Retaining sector default coordinates.", "warning")
-                );
-            }
-        }
-
-        function resetMapView() {
-            map.flyTo(currentPos, 13);
-        }
-
-        function fetchLiveBasinInundation() {
-            inundationLayer.clearLayers();
-            const delta = 0.012;
-            const floodPolygonCoordinates = [
-                [currentPos[0] - delta, currentPos[1] - delta],
-                [currentPos[0] + delta * 0.8, currentPos[1] - delta * 0.5],
-                [currentPos[0] + delta * 0.4, currentPos[1] + delta],
-                [currentPos[0] - delta * 0.9, currentPos[1] + delta * 0.7]
-            ];
-            activeFloodZoneCoordinates = floodPolygonCoordinates.map(([lat, lng]) => [lng, lat]);
-            const floodPolygon = L.polygon(floodPolygonCoordinates, {
-                color: '#DC2626',
-                fillColor: '#DC2626',
-                fillOpacity: 0.25,
-                weight: 1.5,
-                dashArray: '4, 4'
-            }).addTo(inundationLayer);
-            
-            showToast("Inundation Model", "Calculated 2.4m flood contour mapped.", "warning");
-        }
-
-        function focusIncident(lat, lng, id) {
-            map.flyTo([lat, lng], 15, { duration: 0.8 });
-            if (activeMarkers[id]) activeMarkers[id].openPopup();
-        }
-
-        // Live Incident Card Ingestion
-        const renderedIncidentIds = new Set();
-        function renderSOSCard(sos) {
-            const sosId = sos.incident_id || sos.id || `TICK-${Math.floor(1000 + Math.random() * 9000)}`;
-            if (renderedIncidentIds.has(String(sosId))) return;
-            renderedIncidentIds.add(String(sosId));
-
-            const emptyState = document.getElementById('empty-state');
-            if (emptyState) emptyState.remove();
-
-            const list = document.getElementById('incident-queue');
-            const countElem = document.getElementById('sos-count');
-            countElem.innerText = parseInt(countElem.innerText) + 1;
-
-            const phone = sos.phone || '+91 9451195342';
-            const message = sos.message || 'Distress signal received';
-            const lat = Number(sos.latitude);
-            const lng = Number(sos.longitude);
-
-            const newItem = document.createElement('div');
-            newItem.id = `card-${sosId}`;
-            newItem.className = "incident-card p-2.5 bg-slate-900/80 border border-slate-800 rounded";
-            newItem.onclick = () => focusIncident(lat, lng, sosId);
-            newItem.innerHTML = `
-                <div class="flex justify-between items-center text-xs font-mono">
-                    <span class="font-bold text-red-400">${sosId}</span>
-                    <span class="text-[9px] bg-red-950 text-red-400 border border-red-800/80 px-1 py-0.2 rounded font-bold">${sos.severity || 'PRIORITY 1'}</span>
-                </div>
-                <p class="text-xs text-slate-300 mt-1">${message}</p>
-                <div class="flex justify-between items-center mt-2 text-[10px] font-mono text-slate-500">
-                    <span>${phone}</span>
-                    <span>${lat.toFixed(4)}, ${lng.toFixed(4)}</span>
-                </div>
-            `;
-            list.prepend(newItem);
-
-            const newMarker = L.marker([lat, lng], { icon: beaconIcon }).addTo(map);
-            newMarker.bindPopup(`
-                <div class="font-mono text-xs p-1 text-slate-900">
-                    <div class="flex justify-between items-center pb-1 border-b mb-1">
-                        <strong class="text-red-700">${sosId}</strong>
-                        <span class="text-[9px] bg-red-100 text-red-800 px-1 rounded">ACTIVE</span>
-                    </div>
-                    <div><b>Contact:</b> ${phone}</div>
-                    <div class="text-[11px] text-slate-600 mt-1">${message}</div>
-                    <button onclick="routeRescueUnitToVictim(${lat}, ${lng})" class="mt-2 w-full py-1.5 bg-blue-700 hover:bg-blue-800 text-white rounded font-bold text-[11px] flex items-center justify-center space-x-1 shadow">
-                        <i class="fa-solid fa-truck-fast mr-1"></i>
-                        <span>Dispatch Unit (Road Track)</span>
-                    </button>
-                </div>
-            `).openPopup();
-            activeMarkers[sosId] = newMarker;
-            map.flyTo([lat, lng], 15);
-        }
-
-        function injectIncidentToDashboard(incident) {
-            if (!incident) return;
-            console.log("Realtime incident ingested:", incident);
-            const lat = Number(incident.lat ?? incident.latitude);
-            const lng = Number(incident.lng ?? incident.longitude);
-            if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
-
-            renderSOSCard({
-                ...incident,
-                id: incident.ticket_id || incident.incident_id || incident.id,
-                incident_id: incident.ticket_id || incident.incident_id || incident.id,
-                phone: incident.contact || incident.phone,
-                latitude: lat,
-                longitude: lng,
-                message: incident.details || incident.message || 'Emergency flood rescue request from citizen portal.',
-                severity: incident.emergency_type || incident.severity || 'PRIORITY 1'
-            });
-
-            if (typeof fetchLiveBasinInundation === 'function') {
-                fetchLiveBasinInundation();
-            }
-            if (typeof routeRescueUnitToVictim === 'function') {
-                routeRescueUnitToVictim(lat, lng);
-            }
-        }
-
-        function handleIncomingRealtimeIncident(incident) {
-            injectIncidentToDashboard(incident);
-        }
-
-        try {
-            const sosBroadcast = new BroadcastChannel('suraksha_grid_realtime');
-            sosBroadcast.onmessage = (event) => {
-                if (event.data && event.data.type === 'NEW_INCIDENT') {
-                    handleIncomingRealtimeIncident(event.data.payload);
-                }
-            };
-        } catch (error) {}
-
-        window.addEventListener('storage', (event) => {
-            if (event.key !== 'suraksha_last_sos' || !event.newValue) return;
-            try {
-                const data = JSON.parse(event.newValue);
-                handleIncomingRealtimeIncident(data.payload);
-            } catch (error) {}
-        });
-
-        // Live Geolocation Dispatch
-        function dispatchLiveDeviceSOS() {
-            if ("geolocation" in navigator) {
-                navigator.geolocation.getCurrentPosition(
-                    (pos) => sendLiveSOS(pos.coords.latitude, pos.coords.longitude),
-                    () => sendLiveSOS(currentPos[0] + (Math.random() - 0.5) * 0.015, currentPos[1] + (Math.random() - 0.5) * 0.015)
-                );
-            } else {
-                sendLiveSOS(currentPos[0], currentPos[1]);
-            }
-        }
-
-        async function sendLiveSOS(lat, lng) {
-            const payload = {
-                citizen_name: "Field Incident Stream",
-                phone: "+919451195342",
-                latitude: parseFloat(lat),
-                longitude: parseFloat(lng),
-                message: "Water entering ground floor, request unit dispatch.",
-                severity: "PRIORITY 1"
-            };
-
-            try {
-                const res = await fetch(`${API_BASE}/api/v1/sos/`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-                
-                if (res.ok) {
-                    const data = await res.json();
-                    renderSOSCard({ ...payload, id: data.incident_id || data.id });
-                    showToast("Distress Ingested", "Incident added to dispatch queue.", "critical");
-                } else {
-                    renderSOSCard(payload);
-                }
-            } catch (err) {
-                renderSOSCard(payload);
-            }
-        }
-
-        // Real-Time WebSocket Channel
-        async function warmupBackend() {
-            try {
-                await fetch(`${API_BASE}/`, { method: 'GET' });
-            } catch (e) {
-                console.log("Waking up backend...");
-            }
-        }
-
-        let telemetryPollingTimer = null;
-        let websocketReconnectTimer = null;
-
-        function setTelemetryOnline() {
-            const badge = document.getElementById('telemetry-status');
-            if (badge) {
-                badge.innerHTML = '<span class="inline-block w-2.5 h-2.5 bg-emerald-500 rounded-full mr-1.5 animate-pulse"></span>TELEMETRY STREAM ONLINE';
-                badge.className = "flex items-center text-xs font-mono font-bold text-emerald-400 bg-emerald-950/60 border border-emerald-500/40 px-3 py-1 rounded-full shadow-[0_0_12px_rgba(16,185,129,0.3)]";
-            }
-            document.getElementById('ws-status').innerText = 'TELEMETRY STREAM ONLINE';
-        }
-
-        function startTelemetryPolling() {
-            if (telemetryPollingTimer) return;
-            setTelemetryOnline();
-            const poll = async () => {
-                try {
-                    const response = await fetch(`${API_BASE}/api/v1/sos/?page=1&page_size=100`);
-                    if (!response.ok) return;
-                    const payload = await response.json();
-                    (payload.items || [])
-                        .filter((incident) => incident.status !== 'RESOLVED')
-                        .forEach((incident) => renderSOSCard({
-                            ...incident,
-                            latitude: incident.lat,
-                            longitude: incident.lng,
-                            message: incident.message || `${incident.emergency_type || 'Emergency'} distress signal received`
-                        }));
-                    setTelemetryOnline();
-                } catch (error) {
-                    console.warn('Telemetry HTTP polling failed:', error);
-                }
-            };
-            poll();
-            telemetryPollingTimer = setInterval(poll, 3000);
-        }
-
-        function stopTelemetryPolling() {
-            if (telemetryPollingTimer) {
-                clearInterval(telemetryPollingTimer);
-                telemetryPollingTimer = null;
-            }
-        }
-
-        function initWebSocket() {
-            const wsTarget = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-                ? `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws/eoc-feed`
-                : 'wss://surakshagrid-app.onrender.com/ws/eoc-feed';
-
-            if (window.eocSocket && [WebSocket.OPEN, WebSocket.CONNECTING].includes(window.eocSocket.readyState)) return;
-            try {
-                const ws = new WebSocket(wsTarget);
-                window.eocSocket = ws;
-                ws.onopen = () => {
-                    console.log("Connected to Telemetry Stream");
-                    setTelemetryOnline();
-                    stopTelemetryPolling();
-                    if (websocketReconnectTimer) {
-                        clearTimeout(websocketReconnectTimer);
-                        websocketReconnectTimer = null;
-                    }
-                    if (window.wsHeartbeat) clearInterval(window.wsHeartbeat);
-                    window.wsHeartbeat = setInterval(() => {
-                        if (ws.readyState === WebSocket.OPEN) {
-                            ws.send("ping");
-                        }
-                    }, 15000);
-                };
-                ws.onmessage = (event) => {
-                    if (event.data === "pong") return;
-                    try {
-                        const data = JSON.parse(event.data);
-                        if (data.type === 'HANDSHAKE_ACK') return;
-                        const incident = data.data || data;
-                        if (incident.lat != null || incident.latitude != null) {
-                            handleIncomingRealtimeIncident({
-                                ...incident,
-                                ticket_id: incident.ticket_id || incident.incident_id || incident.id,
-                                contact: incident.contact || incident.phone || incident.phone_number,
-                                emergency_type: incident.emergency_type,
-                                lat: incident.lat ?? incident.latitude,
-                                lng: incident.lng ?? incident.longitude,
-                                details: incident.details || incident.message || 'Emergency distress signal received.'
-                            });
-                        }
-                    } catch (error) {
-                        console.error("Invalid EOC telemetry payload:", error);
-                    }
-                };
-                ws.onclose = () => {
-                    console.warn("WebSocket closed. Reconnecting in 3s...");
-                    if (window.eocSocket === ws) window.eocSocket = null;
-                    if (window.wsHeartbeat) {
-                        clearInterval(window.wsHeartbeat);
-                        window.wsHeartbeat = null;
-                    }
-                    startTelemetryPolling();
-                    websocketReconnectTimer = setTimeout(initWebSocket, 3000);
-                };
-                ws.onerror = (err) => {
-                    console.error("WebSocket error:", err);
-                    startTelemetryPolling();
-                };
-            } catch (error) {
-                console.error("WebSocket initialization error:", error);
-                startTelemetryPolling();
-                websocketReconnectTimer = setTimeout(initWebSocket, 3000);
-            }
-        }
-
-        warmupBackend().finally(initWebSocket);
-        fetchRealLiveWeather();
-        setInterval(fetchRealLiveWeather, 30000);
-        // --- 100% Real Vehicle Hardware Telemetry Receiver ---
-let telemetrySocket = null;
-let liveRescueMarker = null;
-
-// Directional vehicle arrow icon for live GPS tracking
-function createVehicleIcon(angle) {
-    return L.divIcon({
-        className: 'tactical-vehicle',
-        html: `
-            <div style="transform: rotate(${angle}deg); transition: transform 0.15s ease;" class="relative flex items-center justify-center">
-                <div class="w-8 h-8 rounded-full bg-blue-600 border-2 border-white shadow-xl flex items-center justify-center text-white text-xs">
-                    <i class="fa-solid fa-location-arrow"></i>
-                </div>
-            </div>
-        `,
-        iconSize: [32, 32],
-        iconAnchor: [16, 16]
+    <div class="col-span-3 bg-slate-900/60 rounded border border-slate-800 p-3 flex flex-col">
+      <div class="text-xs font-mono font-bold text-slate-400 mb-3 flex items-center justify-between border-b border-slate-800 pb-2">
+        <span>LIVE INCIDENT QUEUE</span>
+        <span class="text-emerald-400 text-[10px]">ONLINE</span>
+      </div>
+      <div id="incident-queue" class="flex-1 overflow-y-auto space-y-2 pr-1 text-xs">
+        <div id="queue-empty" class="text-slate-500 text-center py-10 font-mono text-[11px]">No active distress incidents in sector queue.</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const map = L.map('map').setView([28.6350, 77.4350], 13);
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { maxZoom: 19 }).addTo(map);
+
+    let vehicleMarker = L.marker([28.6410, 77.4280]).addTo(map).bindPopup("NDRF Base Station Unit #4");
+    let currentRoute = null;
+    let incidentCount = 0;
+
+    const floodLayer = L.polygon([
+      [28.6360, 77.4380], [28.6375, 77.4480], [28.6290, 77.4520], [28.6270, 77.4410]
+    ], { color: '#ef4444', fillColor: '#dc2626', fillOpacity: 0.35, weight: 2, dashArray: '4, 4' }).addTo(map);
+
+    document.getElementById('toggle-inundation').addEventListener('click', () => {
+      if (map.hasLayer(floodLayer)) map.removeLayer(floodLayer);
+      else floodLayer.addTo(map);
     });
-}
 
-function initRealTimeVehicleStream() {
-    const wsUrl = `${WS_BASE}/ws/vehicle-telemetry`;
+    const ws = new WebSocket('wss://surakshagrid-app.onrender.com/ws/eoc-feed');
+    ws.onmessage = (event) => {
+      try {
+        const msg = JSON.parse(event.data);
+        if (msg.type === "NEW_INCIDENT") addLiveIncident(msg);
+      } catch (e) { console.error(e); }
+    };
 
-    try {
-        telemetrySocket = new WebSocket(wsUrl);
+    window.addEventListener('storage', (e) => {
+      if (e.key === 'SURAKSHA_DISPATCH_EVENT') {
+        const item = JSON.parse(e.newValue);
+        addLiveIncident(item.payload || item);
+      }
+    });
 
-        telemetrySocket.onopen = () => {
-            console.log("Connected to Live Rescue Unit GPS Stream");
-        };
+    function addLiveIncident(data) {
+      document.getElementById('queue-empty')?.remove();
+      incidentCount++;
+      document.getElementById('active-count').innerText = `${incidentCount} Active Tickets`;
 
-        // Fires ONLY when the phone/driver sends actual physical GPS fixes
-        telemetrySocket.onmessage = (event) => {
-            const data = JSON.parse(event.data);
+      const q = document.getElementById('incident-queue');
+      const card = document.createElement('div');
+      card.className = "p-2.5 rounded bg-slate-900 border border-red-500/60 font-mono text-[11px] cursor-pointer hover:bg-slate-800";
+      card.innerHTML = `
+        <div class="flex justify-between font-bold text-red-400">
+          <span>${data.ticket_id || 'TICK-LIVE'}</span>
+          <span class="text-[9px] bg-red-950 px-1 py-0.5 rounded border border-red-700">PRIORITY 1</span>
+        </div>
+        <div class="text-slate-300 mt-1">${data.notes || data.details || 'Distress signal received'}</div>
+        <div class="text-slate-500 text-[10px] mt-1">${data.contact || '+91-EMERGENCY'}</div>
+      `;
+      q.prepend(card);
 
-            if (data.type === "DRIVER_LOCATION_UPDATE") {
-                const { unit_id, latitude, longitude, speed_kmh, heading, distance_km, eta_mins } = data;
-                const latLng = [latitude, longitude];
+      const lat = data.lat || 28.6322;
+      const lng = data.lng || 77.4446;
 
-                // 1. Update the Tactical HUD on sidebar
-                const etaCard = document.getElementById('eta-card');
-                if (etaCard) etaCard.classList.remove('hidden');
+      const victimMarker = L.circleMarker([lat, lng], {
+        color: '#ef4444', fillColor: '#dc2626', fillOpacity: 0.9, radius: 8
+      }).addTo(map);
 
-                const distElem = document.getElementById('eta-dist');
-                if (distElem) distElem.innerText = distance_km ? `${distance_km} km` : '--';
+      victimMarker.bindPopup(`
+        <div class="p-1 text-slate-900 font-sans text-xs">
+          <b>${data.ticket_id || 'Distress Call'}</b><br/>
+          <span>${data.contact || ''}</span><br/>
+          <button id="dispatch-btn-${incidentCount}" class="mt-2 w-full px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded font-bold">
+            Dispatch Unit (Road Track)
+          </button>
+        </div>
+      `).openPopup();
 
-                const timeElem = document.getElementById('eta-time');
-                if (timeElem) timeElem.innerText = eta_mins ? `${eta_mins}m` : '--';
+      map.flyTo([lat, lng], 14);
 
-                const speedElem = document.getElementById('eta-speed');
-                if (speedElem) speedElem.innerText = `${Math.round(speed_kmh || 0)} km/h`;
-
-                const statusElem = document.getElementById('eta-status');
-                if (statusElem) {
-                    statusElem.innerText = 'LIVE GPS ACTIVE';
-                    statusElem.className = 'text-[10px] bg-emerald-500/20 text-emerald-400 px-1.5 py-0.2 rounded font-mono';
-                }
-
-                // 2. Render or Move the real physical vehicle marker
-                if (!liveRescueMarker) {
-                    liveRescueMarker = L.marker(latLng, {
-                        icon: createVehicleIcon(heading || 0)
-                    }).addTo(map);
-                    liveRescueMarker.bindPopup(`<b>${unit_id || 'NDRF Unit #4'}</b><br/>Live GPS Connected`).openPopup();
-                } else {
-                    liveRescueMarker.setLatLng(latLng);
-                    liveRescueMarker.setIcon(createVehicleIcon(heading || 0));
-                }
-            }
-        };
-
-        telemetrySocket.onclose = () => {
-            setTimeout(initRealTimeVehicleStream, 3000);
-        };
-    } catch (e) {
-        console.error("Vehicle stream error:", e);
+      setTimeout(() => {
+        document.getElementById(`dispatch-btn-${incidentCount}`)?.addEventListener('click', () => {
+          renderSafeCorridor([28.6410, 77.4280], [lat, lng]);
+        });
+      }, 500);
     }
-}
 
-// Start listening immediately
-initRealTimeVehicleStream();
-    </script>
-</body>
-</html><script>
-function drawGuaranteedSafeRoute(destLat, destLng) {
-    if (!window.map) return;
-    if (window.currentRescueRoute) { window.map.removeLayer(window.currentRescueRoute); }
-    const safeWaypoints = [
-        [28.6410, 77.4280],
+    function renderSafeCorridor(start, end) {
+      if (currentRoute) map.removeLayer(currentRoute);
+      const safePoints = [
+        start,
         [28.6385, 77.4320],
         [28.6360, 77.4390],
         [28.6340, 77.4415],
-        [destLat || 28.6322, destLng || 77.4446]
-    ];
-    window.currentRescueRoute = L.polyline(safeWaypoints, {
-        color: '#10b981',
-        weight: 6,
-        opacity: 0.95,
-        lineCap: 'round',
-        lineJoin: 'round',
-        dashArray: '8, 12'
-    }).addTo(window.map);
-    window.map.fitBounds(window.currentRescueRoute.getBounds(), { padding: [50, 50] });
-    const etaElem = document.querySelector('#unit-eta') || document.querySelector('[class*="ETA"]');
-    const distElem = document.querySelector('#unit-dist') || document.querySelector('[class*="DIST"]');
-    const speedElem = document.querySelector('#unit-speed') || document.querySelector('[class*="SPEED"]');
-    if (etaElem) etaElem.innerText = "6 MIN";
-    if (distElem) distElem.innerText = "3.4 KM";
-    if (speedElem) speedElem.innerText = "38 KM/H";
-}
-document.addEventListener('click', function(e) {
-    if (e.target && (e.target.innerText.includes('Dispatch Unit') || e.target.closest('button')?.innerText.includes('Dispatch Unit'))) {
-        e.preventDefault();
-        drawGuaranteedSafeRoute(28.6322, 77.4446);
+        end
+      ];
+      currentRoute = L.polyline(safePoints, {
+        color: '#10b981', weight: 6, opacity: 0.95, lineCap: 'round', dashArray: '8, 12'
+      }).addTo(map);
+      map.fitBounds(currentRoute.getBounds(), { padding: [50, 50] });
+
+      document.getElementById('unit-eta').innerText = "6 MIN";
+      document.getElementById('unit-dist').innerText = "3.4 KM";
+      document.getElementById('unit-speed').innerText = "38 KM/H";
     }
-});
-</script>
+  </script>
+</body>
+</html>
